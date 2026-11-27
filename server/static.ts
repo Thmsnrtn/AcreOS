@@ -46,6 +46,8 @@ const STATIC_DATA_PATHS = new Set([
   "/palette-verbs.json",
   "/glossary.json",
   "/onboarding-checklist.json",
+  "/deposit-return-rules.json",
+  "/sub-processors.json",
 ]);
 const isStaticDataPath = (urlPath: string) => STATIC_DATA_PATHS.has(urlPath);
 

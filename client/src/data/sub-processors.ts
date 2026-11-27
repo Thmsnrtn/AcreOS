@@ -187,8 +187,14 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
  * The <tr> rows of the privacy policy's Section 8 table, same markup the
  * asset's rows had. The asset carries {{SUBPROCESSOR_ROWS}}; privacy.tsx
  * substitutes this in, so the policy renders from the shared list.
+ *
+ * The list is a REQUIRED argument, deliberately: a default of
+ * SUB_PROCESSORS would make every importer of this function retain the
+ * whole list in its bundle chunk, and the list now ships as served
+ * data (/sub-processors.json — client/src/lib/sub-processors.ts), so
+ * the one client caller passes the loaded list in.
  */
-export function subProcessorRowsHtml(list: readonly SubProcessor[] = SUB_PROCESSORS): string {
+export function subProcessorRowsHtml(list: readonly SubProcessor[]): string {
   return list
     .map(
       (sp) =>

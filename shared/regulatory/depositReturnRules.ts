@@ -59,14 +59,14 @@ export interface DepositReturnRule {
 }
 
 /**
- * Deliberately incomplete. An absent jurisdiction is reported as unknown.
+ * The rules table. Deliberately incomplete. An absent jurisdiction is reported as unknown.
  * KY is absent on purpose: KRS §383.580 runs a two-stage process (itemized
  * list, then a tenant-response window, then forfeiture consequences) that
  * does not reduce to a single "N days from move-out" number we are willing
  * to put in front of an operator. Same rule as everywhere else here — if we
  * are not sure, we say so.
  */
-const RULES: Record<string, DepositReturnRule> = {
+export const DEPOSIT_RETURN_RULES: Record<string, DepositReturnRule> = {
   AL: { state: "AL", deadlineDays: 60, itemizedStatementRequired: true, citation: "Ala. Code §35-9A-201(b)" },
   AK: {
     state: "AK", deadlineDays: 14, itemizedStatementRequired: true,
@@ -175,14 +175,40 @@ const RULES: Record<string, DepositReturnRule> = {
   },
 };
 
-/** Every jurisdiction with an encoded deadline. Sorted, stable. */
-export const DEPOSIT_RULE_STATES: readonly string[] = Object.keys(RULES).sort();
+/**
+ * Every jurisdiction with an encoded deadline. Sorted, stable.
+ * The PURE annotation on the initializer is load-bearing for the diet:
+ * this is the module's one top-level call, and unannotated Rollup
+ * treats it as a side effect and retains it — and with it the whole
+ * rules table — in any chunk that imports only the deadline logic
+ * (the rent roll, which now loads the table as served data). The
+ * expression is pure: it reads the frozen-by-convention table literal
+ * above and sorts a fresh array of its keys.
+ */
+export const DEPOSIT_RULE_STATES: readonly string[] = /*#__PURE__*/ Object.keys(DEPOSIT_RETURN_RULES).sort();
+
+/**
+ * Returns the rule for a jurisdiction (2-letter, any case) from an
+ * explicitly supplied table. Null if absent. This is the form the
+ * client uses: the table itself is served as data
+ * (/deposit-return-rules.json, generated verbatim from
+ * DEPOSIT_RETURN_RULES above) instead of riding inside the customer
+ * bundle as JS — see client/src/lib/deposit-return-rules.ts. The
+ * server and the test suites use getDepositReturnRule below, over the
+ * bundled table, synchronously.
+ */
+function getDepositReturnRuleFrom(
+  rules: Record<string, DepositReturnRule>,
+  state: string | null | undefined,
+): DepositReturnRule | null {
+  if (!state) return null;
+  const key = state.toUpperCase().trim();
+  return rules[key] ?? null;
+}
 
 /** Returns the rule for a jurisdiction (2-letter, any case). Null if absent. */
 export function getDepositReturnRule(state: string | null | undefined): DepositReturnRule | null {
-  if (!state) return null;
-  const key = state.toUpperCase().trim();
-  return RULES[key] ?? null;
+  return getDepositReturnRuleFrom(DEPOSIT_RETURN_RULES, state);
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -250,6 +276,37 @@ export function computeDepositDeadline(args: {
   state: string | null | undefined;
   hasDeductions: boolean;
 }): DepositDeadlineResult {
+  return computeDeadlineForRule(getDepositReturnRule(args.state), args);
+}
+
+/**
+ * computeDepositDeadline over an explicitly supplied rules table —
+ * the client's form, where the table arrives as served data (see
+ * getDepositReturnRuleFrom). Semantics are identical: the deadline
+ * arithmetic, the two-branch selection and every unknownReason string
+ * live in computeDeadlineForRule, once, and both entry points resolve
+ * their rule (bundled table above, served table here) and delegate.
+ */
+export function computeDepositDeadlineFrom(
+  rules: Record<string, DepositReturnRule>,
+  args: {
+    moveOutDate: string | null | undefined;
+    state: string | null | undefined;
+    hasDeductions: boolean;
+  },
+): DepositDeadlineResult {
+  return computeDeadlineForRule(getDepositReturnRuleFrom(rules, args.state), args);
+}
+
+/** The shared arithmetic for both entry points, over a resolved rule. */
+function computeDeadlineForRule(
+  rule: DepositReturnRule | null,
+  args: {
+    moveOutDate: string | null | undefined;
+    state: string | null | undefined;
+    hasDeductions: boolean;
+  },
+): DepositDeadlineResult {
   const unknown = (reason: string): DepositDeadlineResult => ({
     known: false,
     deadlineDate: null,
@@ -261,7 +318,6 @@ export function computeDepositDeadline(args: {
     unknownReason: reason,
   });
 
-  const rule = getDepositReturnRule(args.state);
   if (!rule) {
     const label = args.state ? args.state.toUpperCase().trim() : "(no state on the lease)";
     return unknown(

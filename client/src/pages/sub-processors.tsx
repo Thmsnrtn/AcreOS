@@ -20,14 +20,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { usePageMeta } from "@/hooks/use-document-title";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
-import { SUB_PROCESSORS, SUB_PROCESSORS_LAST_UPDATED } from "@/data/sub-processors";
+import { useSubProcessors } from "@/lib/sub-processors";
 
 export default function SubProcessorsPage() {
   usePageMeta(
     "Sub-processors — AcreOS",
     "AcreOS sub-processor list. GDPR Art. 28 disclosures: vendor, purpose, data categories, region, DPA link, effective date.",
   );
-  const lastUpdated = SUB_PROCESSORS_LAST_UPDATED;
+  // The list is served as data (/sub-processors.json, sourced from
+  // client/src/data/sub-processors.ts) instead of riding inside this
+  // chunk as JS — see client/src/lib/sub-processors.ts. Shell first:
+  // the page frame renders immediately, the table on arrival; a failed
+  // or malformed asset renders a visible error, never a silently
+  // shorter list.
+  const { data, error: listError } = useSubProcessors();
+  const lastUpdated = data?.lastUpdated;
   const docRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -49,7 +56,7 @@ export default function SubProcessorsPage() {
             <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
               Third-party service providers who process customer data on our
               behalf. We notify customers ≥30 days before adding a new
-              sub-processor. Last updated {lastUpdated}.
+              sub-processor.{lastUpdated ? ` Last updated ${lastUpdated}.` : ""}
             </p>
           </div>
         </div>
@@ -68,7 +75,23 @@ export default function SubProcessorsPage() {
                 </tr>
               </thead>
               <tbody>
-                {SUB_PROCESSORS.map((sp) => (
+                {listError ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-3">
+                      <p role="alert" className="text-sm text-destructive" data-testid="sub-processors-load-error">
+                        We couldn't load the sub-processor list. Check your connection and refresh to
+                        try again.
+                      </p>
+                    </td>
+                  </tr>
+                ) : !data ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-3 text-muted-foreground" aria-busy="true">
+                      Loading the sub-processor list…
+                    </td>
+                  </tr>
+                ) : (
+                  data.processors.map((sp) => (
                   <tr key={sp.vendor} className="border-b border-border/40 align-top">
                     <td className="px-4 py-3 font-medium">
                       {sp.vendor}
@@ -101,7 +124,8 @@ export default function SubProcessorsPage() {
                       {sp.effectiveDate ?? "—"}
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </CardContent>

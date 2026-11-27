@@ -89,10 +89,14 @@ import {
 } from "@shared/rental/paymentAllocation";
 import type { LateFeeProposal } from "@shared/rental/lateFeeProposal";
 import {
-  computeDepositDeadline,
+  computeDepositDeadlineFrom,
   depositDeadlineCountdown,
   type DepositDeadlineResult,
 } from "@shared/regulatory/depositReturnRules";
+import {
+  useDepositReturnRules,
+  type DepositReturnRulesData,
+} from "@/lib/deposit-return-rules";
 
 // ---------------------------------------------------------------------------
 // Wire types
@@ -1571,6 +1575,13 @@ function RecordPaymentForm({
  *     Being early is never the violation.
  */
 function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading: boolean }) {
+  // The statutory rules table is served as data (/deposit-return-rules.json,
+  // sourced from @shared/regulatory/depositReturnRules) instead of riding
+  // inside this chunk as JS — see client/src/lib/deposit-return-rules.ts.
+  // Shell first: while it is in flight the section shows its loading
+  // skeleton; a failed or malformed asset renders a visible error line,
+  // never a silently-empty clock (the static-data discipline).
+  const { data: rules, error: rulesError } = useDepositReturnRules();
   const ended = useMemo(
     () =>
       leases
@@ -1591,7 +1602,12 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {rulesError ? (
+          <p role="alert" className="text-sm text-destructive" data-testid="deposit-rules-load-error">
+            We couldn't load the security-deposit deadlines. Check your connection and refresh to try
+            again.
+          </p>
+        ) : isLoading || !rules ? (
           <Skeleton className="h-24" />
         ) : ended.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -1607,7 +1623,7 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
           >
             {ended.map((l) => (
               <motion.li key={l.id} variants={staggerItem}>
-                <DepositClockRow lease={l} />
+                <DepositClockRow lease={l} rules={rules} />
               </motion.li>
             ))}
           </motion.ul>
@@ -1617,18 +1633,18 @@ function DepositClockSection({ leases, isLoading }: { leases: Lease[]; isLoading
   );
 }
 
-function DepositClockRow({ lease }: { lease: Lease }) {
+function DepositClockRow({ lease, rules }: { lease: Lease; rules: DepositReturnRulesData }) {
   const moveOutDate = lease.endDate ? String(lease.endDate).slice(0, 10) : null;
 
   // Both statutory branches. We do not know whether this operator is
   // withholding anything (no deposit-disposition read exists yet), so where
   // the branches differ the EARLIER date binds.
-  const withDeductions = computeDepositDeadline({
+  const withDeductions = computeDepositDeadlineFrom(rules, {
     moveOutDate,
     state: lease.state,
     hasDeductions: true,
   });
-  const withoutDeductions = computeDepositDeadline({
+  const withoutDeductions = computeDepositDeadlineFrom(rules, {
     moveOutDate,
     state: lease.state,
     hasDeductions: false,

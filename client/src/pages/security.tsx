@@ -43,9 +43,13 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { OpenGraph } from "@/components/seo/OpenGraph";
 import { securityPageSchema, organizationSchema, SITE } from "@/lib/jsonld-schemas";
 import { SupportFeedbackButton } from "@/components/support-feedback-button";
-import { SUB_PROCESSORS } from "@/data/sub-processors";
+import { useSubProcessors } from "@/lib/sub-processors";
 
 export default function SecurityPage() {
+  // The sub-processor list is served as data (/sub-processors.json,
+  // sourced from client/src/data/sub-processors.ts) instead of riding
+  // inside this chunk as JS — see client/src/lib/sub-processors.ts.
+  const { data: subProcessors, error: subProcessorsError } = useSubProcessors();
   usePageMeta(
     "Security",
     "How AcreOS protects Land Investors' data — field-level encryption, HTTPS, sign-in and MFA, sub-processors, and vulnerability disclosure.",
@@ -192,14 +196,31 @@ export default function SecurityPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {SUB_PROCESSORS.map((sp) => (
-                    <TableRow key={sp.vendor}>
-                      <TableCell className="font-medium">{sp.vendor}</TableCell>
-                      <TableCell className="text-muted-foreground">{sp.purpose}</TableCell>
-                      <TableCell className="text-muted-foreground">{sp.dataCategories.join(", ")}</TableCell>
-                      <TableCell className="text-muted-foreground">{sp.region}</TableCell>
+                  {subProcessorsError ? (
+                    <TableRow>
+                      <TableCell colSpan={4}>
+                        <p role="alert" className="text-sm text-destructive" data-testid="security-sub-processors-load-error">
+                          We couldn't load the sub-processor list. Check your connection and refresh
+                          to try again.
+                        </p>
+                      </TableCell>
                     </TableRow>
-                  ))}
+                  ) : !subProcessors ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-muted-foreground" aria-busy="true">
+                        Loading the sub-processor list…
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    subProcessors.processors.map((sp) => (
+                      <TableRow key={sp.vendor}>
+                        <TableCell className="font-medium">{sp.vendor}</TableCell>
+                        <TableCell className="text-muted-foreground">{sp.purpose}</TableCell>
+                        <TableCell className="text-muted-foreground">{sp.dataCategories.join(", ")}</TableCell>
+                        <TableCell className="text-muted-foreground">{sp.region}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>

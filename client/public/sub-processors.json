@@ -1,0 +1,174 @@
+{
+  "lastUpdated": "2026-11-25",
+  "processors": [
+    {
+      "vendor": "Clerk",
+      "purpose": "Authentication, session management, multi-factor authentication",
+      "dataCategories": [
+        "email",
+        "authentication factors",
+        "session metadata"
+      ],
+      "region": "United States",
+      "dpaUrl": "https://clerk.com/legal/dpa",
+      "effectiveDate": "2025-09-01",
+      "evidence": "@clerk/express + @clerk/react; server/middleware/requireClerkMFA.ts"
+    },
+    {
+      "vendor": "Stripe",
+      "purpose": "Payment processing and subscription billing",
+      "dataCategories": [
+        "billing email",
+        "payment method (tokenized)",
+        "tax IDs"
+      ],
+      "region": "United States, EU",
+      "dpaUrl": "https://stripe.com/legal/dpa",
+      "effectiveDate": "2025-09-01",
+      "evidence": "stripe package; server/routes-billing.ts"
+    },
+    {
+      "vendor": "Fly.io",
+      "purpose": "Application hosting and Postgres",
+      "dataCategories": [
+        "all customer data at rest"
+      ],
+      "region": "United States",
+      "dpaUrl": "https://fly.io/legal/dpa",
+      "effectiveDate": "2025-09-01",
+      "evidence": "fly.toml (app acreos, primary_region iad); fly.pgbouncer.toml"
+    },
+    {
+      "vendor": "Cloudflare",
+      "purpose": "DNS, CDN and DDoS protection in front of the application",
+      "dataCategories": [
+        "IP addresses",
+        "request metadata"
+      ],
+      "region": "Global",
+      "dpaUrl": "https://www.cloudflare.com/cloudflare-customer-dpa/",
+      "effectiveDate": "2025-09-01",
+      "evidence": "server/index.ts trust-proxy handling of CF-Connecting-IP (traffic traverses Cloudflare before Fly)"
+    },
+    {
+      "vendor": "Amazon Web Services",
+      "purpose": "Transactional email delivery (SES); document storage (S3) where document storage is configured",
+      "dataCategories": [
+        "recipient email",
+        "message body",
+        "delivery metadata",
+        "uploaded documents (where S3 document storage is configured)"
+      ],
+      "region": "United States",
+      "dpaUrl": "https://aws.amazon.com/service-terms/",
+      "effectiveDate": "2025-09-01",
+      "evidence": "@aws-sdk/client-ses in server/services/emailService.ts; @aws-sdk/client-s3 in server/services/documentStore.ts (DOCUMENTS_S3_BUCKET)"
+    },
+    {
+      "vendor": "Anthropic",
+      "purpose": "AI features (Pax)",
+      "dataCategories": [
+        "prompt content and context you submit"
+      ],
+      "region": "United States",
+      "dpaUrl": "https://www.anthropic.com/legal/dpa",
+      "effectiveDate": "2025-12-01",
+      "optional": true,
+      "evidence": "@anthropic-ai/sdk; ANTHROPIC_API_KEY"
+    },
+    {
+      "vendor": "OpenAI",
+      "purpose": "AI features (model fallback)",
+      "dataCategories": [
+        "prompt content and context you submit"
+      ],
+      "region": "United States",
+      "dpaUrl": "https://openai.com/policies/data-processing-addendum",
+      "effectiveDate": "2025-09-01",
+      "optional": true,
+      "evidence": "openai package; AI_INTEGRATIONS_OPENAI_API_KEY / OPENAI_API_KEY"
+    },
+    {
+      "vendor": "OpenRouter",
+      "purpose": "AI model routing and failover gateway",
+      "dataCategories": [
+        "prompt content and context you submit (routed to the underlying model provider)"
+      ],
+      "region": "United States",
+      "optional": true,
+      "evidence": "OPENROUTER usage across server/ai and server/routes-*"
+    },
+    {
+      "vendor": "Voyage AI",
+      "purpose": "Semantic-search embeddings",
+      "dataCategories": [
+        "text of notes, leads and documents (embedded as vectors for retrieval)"
+      ],
+      "region": "United States",
+      "optional": true,
+      "evidence": "server/services/embeddings/voyageClient.ts (VOYAGE_API_KEY)"
+    },
+    {
+      "vendor": "Twilio",
+      "purpose": "SMS and voice",
+      "dataCategories": [
+        "recipient phone",
+        "message body",
+        "call metadata"
+      ],
+      "region": "United States",
+      "dpaUrl": "https://www.twilio.com/legal/data-protection-addendum",
+      "effectiveDate": "2025-10-01",
+      "optional": true,
+      "evidence": "server/services/smsService.ts; api.twilio.com"
+    },
+    {
+      "vendor": "Lob",
+      "purpose": "Direct mail (postcards and letters)",
+      "dataCategories": [
+        "recipient name and mailing address",
+        "mail content"
+      ],
+      "region": "United States",
+      "dpaUrl": "https://www.lob.com/legal/data-protection-agreement",
+      "effectiveDate": "2025-10-01",
+      "optional": true,
+      "evidence": "lob package; server/services/mail/mailLane.ts"
+    },
+    {
+      "vendor": "Sentry",
+      "purpose": "Error monitoring",
+      "dataCategories": [
+        "stack traces",
+        "redacted request context"
+      ],
+      "region": "United States",
+      "dpaUrl": "https://sentry.io/legal/dpa/",
+      "effectiveDate": "2025-09-01",
+      "evidence": "server/utils/sentry.ts, client/src/lib/sentry.ts (Sentry.init)"
+    },
+    {
+      "vendor": "PostHog",
+      "purpose": "Product analytics",
+      "dataCategories": [
+        "usage events",
+        "session data",
+        "identifiers"
+      ],
+      "region": "United States",
+      "evidence": "client/src/lib/analytics.ts (posthog-js; no-op when VITE_POSTHOG_KEY is unset)"
+    },
+    {
+      "vendor": "Regrid",
+      "purpose": "Parcel data enrichment",
+      "dataCategories": [
+        "public-record parcel queries"
+      ],
+      "region": "United States",
+      "dpaUrl": "https://regrid.com/dpa",
+      "effectiveDate": "2025-12-01",
+      "optional": true,
+      "evidence": "server/services/configManager.ts REGRID_API_KEY; parcel lookup providers"
+    }
+  ]
+}
