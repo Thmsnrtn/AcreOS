@@ -1,0 +1,282 @@
+{
+  "connectServices": {
+    "title": "Connect your services (optional)",
+    "description": "Bring your own Twilio, SendGrid, Lob, or data accounts — your keys, your invoices. Or keep running on ours."
+  },
+  "checklists": {
+    "land_flipper": [
+      {
+        "base": "propertyLookup",
+        "title": "Look up your first parcel",
+        "description": "Open a parcel on the map — soils, flood, wetlands & elevation light up from free public data"
+      },
+      {
+        "base": "import",
+        "title": "Import your county list",
+        "description": "Import a CSV of owners from your target county — your acquisition pipeline starts here"
+      },
+      {
+        "base": "campaign",
+        "title": "Send your first mailer",
+        "description": "Pick a template, target your list, watch responses land"
+      },
+      {
+        "base": "deal",
+        "title": "Track your first deal",
+        "description": "Move a lead to deal and see the offer/close pipeline light up"
+      }
+    ],
+    "note_investor": [
+      {
+        "base": "import",
+        "title": "Import your note portfolio",
+        "description": "Upload your existing notes — amortization schedules render automatically",
+        "href": "/finance"
+      },
+      {
+        "base": "notePayment",
+        "title": "Record your first payment",
+        "description": "Log a P&I payment and see the schedule update to the cent"
+      },
+      {
+        "base": "deal",
+        "title": "Track a note buy or sell",
+        "description": "Move a note acquisition or disposition through your pipeline"
+      }
+    ],
+    "hybrid": [
+      {
+        "base": "propertyLookup",
+        "title": "Look up your first property",
+        "description": "Open a parcel on the map — soils, flood, wetlands & elevation light up from free public data"
+      },
+      {
+        "base": "lead",
+        "title": "Add your first lead or note",
+        "description": "Import a CSV — leads, notes, or both. Same pipeline, different surfaces"
+      },
+      {
+        "base": "campaign",
+        "title": "Send your first outreach",
+        "description": "Mailer for sellers, or direct outreach to note holders"
+      },
+      {
+        "base": "notePayment",
+        "title": "Record your first note payment",
+        "description": "Log a P&I payment and see the schedule update to the cent"
+      }
+    ],
+    "residential_wholesaler": [
+      {
+        "base": "lead",
+        "title": "Add your first seller lead",
+        "description": "Import a motivated-seller list or paste an address — your assignment pipeline starts here"
+      },
+      {
+        "base": "campaign",
+        "title": "Launch your first outreach campaign",
+        "description": "Reach sellers by mail — responses land as leads you can put under contract"
+      },
+      {
+        "base": "deal",
+        "title": "Get your first contract into the pipeline",
+        "description": "Move a signed contract into Deals — buyer blasts and assignment tracking light up"
+      }
+    ],
+    "fix_and_flip": [
+      {
+        "base": "lead",
+        "title": "Add your first property lead",
+        "description": "Import a distressed-property list or paste an address — your flip pipeline starts here"
+      },
+      {
+        "base": "campaign",
+        "title": "Send your first off-market mailer",
+        "description": "Reach owners before the MLS does — pick a template, target your list"
+      },
+      {
+        "base": "deal",
+        "title": "Track your first flip",
+        "description": "Move a lead into Deals and follow it from offer through rehab to resale"
+      }
+    ],
+    "buy_and_hold": [
+      {
+        "base": "propertyLookup",
+        "title": "Add your first rental property",
+        "description": "Add a property (or look one up on the map) — your portfolio starts here",
+        "href": "/properties",
+        "iconKey": "building2"
+      },
+      {
+        "base": "lead",
+        "title": "Add your first seller lead",
+        "description": "Your next acquisition starts as a lead — import a list or paste an address"
+      },
+      {
+        "base": "deal",
+        "title": "Track your first acquisition",
+        "description": "Move a lead into Deals and follow it from offer to close"
+      }
+    ],
+    "short_term_rental": [
+      {
+        "base": "propertyLookup",
+        "title": "Add your first rental",
+        "description": "Add a property (or look one up on the map) — your portfolio starts here",
+        "href": "/properties",
+        "iconKey": "building2"
+      },
+      {
+        "base": "lead",
+        "title": "Add your first seller lead",
+        "description": "Your next acquisition starts as a lead — import a list or paste an address"
+      },
+      {
+        "base": "deal",
+        "title": "Track your first acquisition",
+        "description": "Move a lead into Deals and follow it from offer to close"
+      }
+    ],
+    "multifamily": [
+      {
+        "base": "propertyLookup",
+        "title": "Add your first building",
+        "description": "Add a building (or look one up on the map) — your unit portfolio starts here",
+        "href": "/properties",
+        "iconKey": "building2"
+      },
+      {
+        "base": "lead",
+        "title": "Add your first seller lead",
+        "description": "Your next acquisition starts as a lead — import a list or paste an address"
+      },
+      {
+        "base": "deal",
+        "title": "Track your first acquisition",
+        "description": "Move a lead into Deals and follow it from offer to close"
+      }
+    ],
+    "mobile_home": [
+      {
+        "base": "propertyLookup",
+        "title": "Add your first park or home",
+        "description": "Add a park or home (or look one up on the map) — your portfolio starts here",
+        "href": "/properties",
+        "iconKey": "building2"
+      },
+      {
+        "base": "lead",
+        "title": "Add your first seller lead",
+        "description": "Your next acquisition starts as a lead — import a list or paste an address"
+      },
+      {
+        "base": "deal",
+        "title": "Track your first acquisition",
+        "description": "Move a lead into Deals and follow it from offer to close"
+      }
+    ],
+    "commercial": [
+      {
+        "base": "propertyLookup",
+        "title": "Look up your first parcel",
+        "description": "Open a parcel on the map — soils, flood, wetlands & elevation light up from free public data"
+      },
+      {
+        "base": "lead",
+        "title": "Add your first owner lead",
+        "description": "Import an owner list or paste an address — your acquisition pipeline starts here"
+      },
+      {
+        "base": "deal",
+        "title": "Track your first acquisition",
+        "description": "Move a lead into Deals and follow it from LOI to close"
+      }
+    ],
+    "creative_finance": [
+      {
+        "base": "lead",
+        "title": "Add your first seller lead",
+        "description": "Subject-to and owner-carry candidates enter here — import a list or paste an address"
+      },
+      {
+        "base": "deal",
+        "title": "Move your first creative deal",
+        "description": "Track a subject-to or wrap through the pipeline — Close & Carry turns it into a serviced note"
+      },
+      {
+        "base": "notePayment",
+        "title": "Record a payment on your carried note",
+        "description": "Log a P&I payment and see the amortization schedule update to the cent"
+      }
+    ],
+    "developer": [
+      {
+        "base": "propertyLookup",
+        "title": "Look up your first parent parcel",
+        "description": "Soils, flood, wetlands & elevation from free public data — the build decision starts here"
+      },
+      {
+        "base": "lead",
+        "title": "Add your first landowner lead",
+        "description": "Import a list or paste an address — your land pipeline starts here"
+      },
+      {
+        "base": "deal",
+        "title": "Track your first acquisition",
+        "description": "Move a parent parcel into Deals — permits, timelines and lot pricing follow"
+      }
+    ],
+    "subdivider": [
+      {
+        "base": "propertyLookup",
+        "title": "Look up your first parent parcel",
+        "description": "Soils, flood, wetlands & elevation from free public data — the split decision starts here"
+      },
+      {
+        "base": "lead",
+        "title": "Add your first landowner lead",
+        "description": "Import a list or paste an address — your parent-parcel pipeline starts here"
+      },
+      {
+        "base": "deal",
+        "title": "Track your first acquisition",
+        "description": "Move a parent parcel into Deals — plats, permits and lot pricing follow"
+      }
+    ],
+    "tax_lien_deed": [
+      {
+        "base": "import",
+        "title": "Import your first certificate list",
+        "description": "Upload the county's delinquent roll as a CSV — every certificate becomes a trackable lead"
+      },
+      {
+        "base": "propertyLookup",
+        "title": "Look up a delinquent parcel",
+        "description": "Open it on the map — soils, flood, wetlands & elevation from free public data"
+      },
+      {
+        "base": "deal",
+        "title": "Track a certificate to deed",
+        "description": "Move a certificate into Deals — the redemption clock and foreclosure timeline follow"
+      }
+    ],
+    "agent_investor": [
+      {
+        "base": "propertyLookup",
+        "title": "Look up your first parcel",
+        "description": "Open a parcel on the map — soils, flood, wetlands & elevation light up from free public data"
+      },
+      {
+        "base": "lead",
+        "title": "Add your first seller lead",
+        "description": "Import a list or paste an address — own book or client sourcing, same pipeline"
+      },
+      {
+        "base": "deal",
+        "title": "Track your first deal",
+        "description": "Move a lead into Deals and follow it from offer to close"
+      }
+    ]
+  }
+}

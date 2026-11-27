@@ -16,9 +16,14 @@ import {
   computeChecklistProgress,
   getChecklistItems,
   isItemComplete,
+  isOnboardingChecklistData,
   resolveChecklistBusinessType,
   shouldShowChecklist,
 } from "@/lib/onboarding-checklist";
+import {
+  ONBOARDING_CHECKLIST_URL,
+  useStaticData,
+} from "@/lib/static-data";
 
 // Onboarding rebuild (2026-07-29 audit): this component no longer keys on the
 // 3-value investorType fork — items come from the single vertical-aware config
@@ -97,13 +102,27 @@ export function GettingStartedChecklist() {
   const settings = organization?.settings as Record<string, unknown> | null;
   const checklistDismissed = settings?.checklistDismissed === true;
 
+  // Checklist copy is served as a data asset (bundle diet Candidate 1):
+  // the per-vertical rows live in /onboarding-checklist.json, fetched
+  // through the shared loader and shape-guarded at the boundary — a
+  // wrong-shape 200 is a load failure, never items wearing wrong copy.
+  const { data: checklistDataRaw, error: checklistDataError } =
+    useStaticData<unknown>(ONBOARDING_CHECKLIST_URL);
+  const checklistData = isOnboardingChecklistData(checklistDataRaw)
+    ? checklistDataRaw
+    : null;
+  const checklistDataFailed =
+    checklistDataError || (checklistDataRaw !== null && checklistData === null);
+
   // Vertical resolution: the 15-value businessType first, falling back
   // through the coarse investorType fork for orgs that predate the taxonomy.
   const businessType = resolveChecklistBusinessType(
     organization?.onboardingData?.businessType,
     organization?.investorType,
   );
-  const verticalItems = getChecklistItems(businessType);
+  const verticalItems = checklistData
+    ? getChecklistItems(checklistData, businessType)
+    : [];
 
   // W2.1 (activation wedge, preserved): every tier can reach the mailer step.
   // Free-tier orgs see wedge-flavored copy for the campaign item — the server
@@ -136,6 +155,59 @@ export function GettingStartedChecklist() {
       },
     });
   };
+
+  // Loader-failure discipline (the static-data pattern): if the copy asset
+  // failed — or arrived in the wrong shape — the checklist renders its
+  // shell with a visible failure line, never a silently-vanished card and
+  // never a crash. It shows under the same conditions as the checklist
+  // itself (not dismissed, real completion state loaded).
+  if (checklistDataFailed) {
+    if (checklistDismissed || !checklistStatus) return null;
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        transition={{ duration: 0.3 }}
+      >
+        <Card className="relative" data-testid="card-getting-started">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-3 right-3"
+            onClick={handleDismiss}
+            aria-label="Dismiss checklist"
+            data-testid="button-dismiss-checklist"
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
+          </Button>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Sparkles className="w-5 h-5 text-primary" aria-hidden="true" />
+              <CardTitle className="text-lg">Getting Started</CardTitle>
+            </div>
+            <CardDescription>
+              Complete these steps to get the most out of AcreOS
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p
+              role="alert"
+              className="text-sm text-muted-foreground"
+              data-testid="checklist-load-error"
+            >
+              We couldn't load your getting-started checklist. Refresh the
+              page to try again.
+            </p>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  }
+
+  // While the copy asset is still in flight the checklist waits, exactly
+  // as it waits for real completion state (never render unverified rows).
+  if (!checklistData) return null;
 
   // Visibility is independent of empty-state / hasAnyData / skipped-onboarding
   // (audit fixes #1 + #4): hide only on dismiss, genuine completion, or while
