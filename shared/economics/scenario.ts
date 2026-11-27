@@ -251,6 +251,12 @@ export const METRICS: readonly MetricSpec[] = [
   { id: "cam_recoveries_annual", label: "Annual CAM recoveries (recorded)", unit: "cents", higherIsBetter: true },
   { id: "annual_rent_per_sqft", label: "Annual in-place rent per sqft", unit: "cents", higherIsBetter: true },
   { id: "rollover_rent_share_12m", label: "In-place rent expiring within 12 months (share)", unit: "ratio", higherIsBetter: false },
+  // Creative finance origination terms (creative-finance-terms v1). The
+  // wrap loan's interest through its balloon, and the balloon itself —
+  // quantities no earlier engine produced, named once here so no engine
+  // mints a twin.
+  { id: "total_interest", label: "Total interest", unit: "cents", higherIsBetter: true },
+  { id: "balloon_amount", label: "Balloon amount due", unit: "cents", higherIsBetter: true },
 ] as const;
 
 // `days` was added to MetricUnit the moment it was needed rather than deferred.
