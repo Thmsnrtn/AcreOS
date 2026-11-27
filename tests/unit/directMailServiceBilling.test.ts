@@ -83,7 +83,7 @@ vi.mock("../../server/services/byok/toggle", () => ({
 // one piece per send. The charge's SQL is faked (tests/helpers/fakeHouseMailDb);
 // the pool is never consulted, so any poolDebit is recorded as a defect.
 vi.mock("../../server/services/creditCost", () => ({ creditCost: async () => 75 }));
-vi.mock("../../server/services/settings", () => ({ getSetting: async (_k: string, fallback: unknown) => fallback }));
+vi.mock("../../server/services/settings", () => ({ getSetting: async (_k: string, fallback: unknown) => fallback, getStringSetting: async () => null, getNumberSetting: async (_k: string, f: number) => f }));
 vi.mock("../../server/services/credits", () => ({ creditService: { afterDebitCommitted: () => undefined } }));
 vi.mock("../../server/db", async () => (await import("../helpers/fakeHouseMailDb")).fakeHouseMailDbModule);
 vi.mock("../../server/services/creditPool", () => ({

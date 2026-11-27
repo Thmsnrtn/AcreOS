@@ -24,8 +24,8 @@ vi.mock("../../server/utils/logger", () => ({
 vi.mock("../../server/services/byok/key-vault", () => ({ getByokCredential: async () => null }));
 vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 
-vi.mock("../../server/services/founderSettings", () => ({
-  getSetting: vi.fn(async () => null), // default → ["lob"], but tests override via registry
+vi.mock("../../server/services/settings", () => ({
+  getStringSetting: vi.fn(async () => null), // default → ["lob"], but tests override via registry
 }));
 
 import {
@@ -37,7 +37,7 @@ import {
   type ProviderQuote,
   type ProviderSendResult,
 } from "../../server/services/mail/router";
-import { getSetting } from "../../server/services/founderSettings";
+import { getStringSetting } from "../../server/services/settings";
 
 function makeAdapter(opts: {
   name: MailProvider["name"];
@@ -90,7 +90,7 @@ function shipment(overrides: Partial<MailShipment> = {}): MailShipment {
 
 beforeEach(() => {
   __resetMailRouterRegistry();
-  vi.mocked(getSetting).mockResolvedValue(JSON.stringify(["lob", "postgrid", "eddm", "presort", "lettrlabs"]));
+  vi.mocked(getStringSetting).mockResolvedValue(JSON.stringify(["lob", "postgrid", "eddm", "presort", "lettrlabs"]));
 });
 
 describe("MailRouter.route", () => {
@@ -189,7 +189,7 @@ describe("MailRouter.quote", () => {
   });
 
   it("honors mail.providers.enabled override (only lob enabled today)", async () => {
-    vi.mocked(getSetting).mockResolvedValueOnce(JSON.stringify(["lob"]));
+    vi.mocked(getStringSetting).mockResolvedValueOnce(JSON.stringify(["lob"]));
     __setMailRouterRegistry([
       makeAdapter({ name: "lob", costPerPieceCents: 75 }),
       makeAdapter({ name: "postgrid", costPerPieceCents: 55 }),

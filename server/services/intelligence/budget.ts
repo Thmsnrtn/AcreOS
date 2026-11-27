@@ -29,7 +29,7 @@ import { db } from "../../db";
 import { aiBudgetRuns } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../../utils/logger";
-import { getNumberSetting } from "../founderSettings";
+import { getNumberSetting } from "../settings";
 import { clock } from "../../utils/clock";
 
 export type BudgetCategory =
@@ -43,10 +43,12 @@ export type BudgetCategory =
 
 /**
  * Default category shares of the total daily cap (sum to 100).
- * Founder can override any of these via founder_settings:
- *   key = `ai.budget.${category}_share_pct`, value = "0-100" integer string.
+ * Founder can override any of these via the settings registry
+ * (P12-1b: seeded as the `ai.budget.${category}_share_pct` family in
+ * SETTINGS_CATALOG from these defaults):
+ *   key = `ai.budget.${category}_share_pct`, value = 0-100 number.
  */
-const DEFAULT_SHARES: Record<BudgetCategory, number> = {
+export const DEFAULT_SHARES: Record<BudgetCategory, number> = {
   founder_brief: 10, // morning brief — protected, founder-essential
   executor: 30,      // the largest historical consumer; capped tight
   briefing: 15,      // 10-agent company briefing

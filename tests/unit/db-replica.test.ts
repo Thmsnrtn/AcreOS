@@ -37,6 +37,7 @@ vi.mock("../../server/services/settings", () => ({
   getSetting: vi.fn(async (_key: string, fallback: unknown) =>
     Array.isArray(mockCategoryFilter) ? mockCategoryFilter : fallback,
   ),
+  getStringSetting: async () => null, getNumberSetting: async (_k: string, f: number) => f,
 }));
 
 vi.mock("../../server/utils/logger", () => ({

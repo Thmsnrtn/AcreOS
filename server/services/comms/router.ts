@@ -19,7 +19,7 @@ import { assertCallVoiceAllowed, type CallVoice } from "./aiVoiceConsent";
 import { assertOwnerContactAllowed } from "../trust/ownerSuppression";
 import type { Request } from "express";
 import { logger } from "../../utils/logger";
-import { getSetting } from "../founderSettings";
+import { getStringSetting } from "../settings";
 
 export type CommsProviderName = "twilio" | "telnyx" | "bandwidth";
 
@@ -146,7 +146,7 @@ export function getProvider(name: CommsProviderName): CommsProvider | undefined 
  */
 export async function getEnabledProviders(): Promise<CommsProviderName[]> {
   try {
-    const raw = await getSetting("comms.providers.enabled");
+    const raw = await getStringSetting("comms.providers.enabled");
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {

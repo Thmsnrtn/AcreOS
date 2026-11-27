@@ -320,31 +320,6 @@ export async function setSetting(
   cache.delete(key);
 }
 
-export async function listSettings(): Promise<Array<{
-  key: string;
-  value: string;
-  source: "founder" | "env" | "default";
-  definition: KnobDefinition;
-}>> {
-  const rows = await db.select().from(founderSettings);
-  const rowsByKey = new Map(rows.map((r) => [r.key, r]));
-  return KNOBS.map((def) => {
-    const row = rowsByKey.get(def.key);
-    if (row) {
-      return { key: def.key, value: row.value, source: "founder" as const, definition: def };
-    }
-    if (def.envFallback && process.env[def.envFallback]) {
-      return {
-        key: def.key,
-        value: process.env[def.envFallback]!,
-        source: "env" as const,
-        definition: def,
-      };
-    }
-    return { key: def.key, value: def.defaultValue, source: "default" as const, definition: def };
-  });
-}
-
 /**
  * Clear the in-memory cache. Useful when approval flows need to be
  * sure they're reading the absolute latest value.

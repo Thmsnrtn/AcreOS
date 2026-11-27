@@ -45,6 +45,19 @@
  * the registry for them yet and PLATFORM_OWNED_KEYS is deliberately NOT
  * extended in P12-1a — founderSettings remains their runtime reader
  * until P12-1b. The 2 archival keys remain the only bridged keys.
+ *
+ * ── P12-1b RE-PIN (2026-11, named and reasoned): the reader switch has
+ * landed. Every service-level founderSettings reader (archival included)
+ * now resolves through settings.ts — the KNOBS readers via the typed
+ * getSetting and its string adapter (getStringSetting/getNumberSetting),
+ * the founder-settings UI routes via getSettingRow/setSetting. The
+ * overlap set is unchanged (still exactly the 12 KNOBS keys: both
+ * catalogs still declare them — founderSettings.ts and its KNOBS catalog
+ * are retired only in P12-1d). PLATFORM_OWNED_KEYS is unchanged and
+ * still covers exactly the archival keys: it remains the bridge for
+ * founderSettings' own remaining generic reads until 1d, but it is no
+ * longer on any service reader's path — archival.ts reads the registry
+ * directly, which is what the flipped consumer assertion below pins.
  */
 
 import { describe, it, expect } from "vitest";
@@ -76,7 +89,7 @@ describe("the two catalogs overlap on exactly the pinned set (archival bridged; 
     expect(seededKeys.length).toBeGreaterThanOrEqual(25);
   });
 
-  // P12-1a: seeded in P12-1a, reader switch lands in P12-1b.
+  // P12-1a: seeded in P12-1a; reader switch landed in P12-1b.
   const P12_1A_SEEDED_KEYS = [
     "ACTION_PREVIEW_WINDOW_SECONDS",
     "AUTO_EXECUTE_THRESHOLD",
@@ -98,13 +111,17 @@ describe("the two catalogs overlap on exactly the pinned set (archival bridged; 
         "this set is written by one system and possibly read by the other — which " +
         "is how the archival toggle came to report success while reaching nothing. " +
         "The expected set is the 2 bridged archival keys plus the 10 keys seeded " +
-        "in P12-1a (reader switch lands in P12-1b). If you added an overlap " +
+        "in P12-1a (reader switch landed in P12-1b). If you added an overlap " +
         "deliberately, name it here with its slice and update this assertion in " +
         "the same commit.",
     ).toEqual([...P12_1A_SEEDED_KEYS, "archival.enabled", "archival.horizon_days"].sort());
   });
 
   it("the bridge set covers exactly the archival keys; the P12-1a keys are seeded, not bridged", () => {
+    // P12-1b: the bridge is no longer on any service reader's path
+    // (readers resolve through settings.ts directly), but founderSettings
+    // remains in the tree until P12-1d and its bridge set must stay
+    // exactly the archival pair until then.
     const src = read("server/services/founderSettings.ts");
     const at = src.indexOf("const PLATFORM_OWNED_KEYS");
     expect(at, "the bridge set is gone — overlapping keys resolve from the wrong table again")
@@ -114,11 +131,11 @@ describe("the two catalogs overlap on exactly the pinned set (archival bridged; 
     for (const k of ["archival.enabled", "archival.horizon_days"]) {
       expect(decl, `${k} is declared in both catalogs but is not bridged`).toContain(k);
     }
-    // Seeded in P12-1a, reader switch lands in P12-1b: these must NOT be
-    // in the bridge set yet — no reader consults the bridge for them in
-    // this slice, and extending the set is P12-1b's move.
+    // Seeded in P12-1a, reader switch landed in P12-1b: these must NOT be
+    // in the bridge set — their readers resolve through settings.ts
+    // directly, and the bridge stays scoped to the archival pair.
     for (const k of P12_1A_SEEDED_KEYS) {
-      expect(decl, `${k} was added to the bridge set before its P12-1b reader switch`).not.toContain(k);
+      expect(decl, `${k} was added to the bridge set instead of being read from the registry directly`).not.toContain(k);
     }
   });
 });
@@ -169,12 +186,15 @@ describe("the bridge reads platform_settings first, and fails safe", () => {
 });
 
 describe("the consumer this was broken for", () => {
-  it("archival.ts still reads through founderSettings.getSetting", () => {
-    // If the job is ever repointed straight at settings.ts, the bridge stops
-    // being the thing that connects them and this file should be revisited.
+  it("archival.ts reads the registry directly (P12-1b reader switch)", () => {
+    // P12-1b repointed the job straight at settings.ts: the bridge is no
+    // longer the thing that connects the studio write to this read — the
+    // job and the dial now share the one registry, which is the fix the
+    // bridge was standing in for.
     const src = read("server/jobs/archival.ts");
-    expect(src).toContain('from "../services/founderSettings"');
-    expect(src).toContain('getSetting("archival.enabled")');
+    expect(src).toContain('from "../services/settings"');
+    expect(src).toContain('getStringSetting("archival.enabled")');
+    expect(src).not.toContain("founderSettings");
   });
 
   it("and the studio dial still writes platform_settings", () => {

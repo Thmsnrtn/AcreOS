@@ -2195,8 +2195,43 @@ router.get("/calibration/:agentCodename", requireFounder, async (req: Request, r
 
 router.get("/settings", requireFounder, async (_req: Request, res: Response) => {
   try {
-    const { listSettings } = await import("./services/founderSettings");
-    const settings = await listSettings();
+    // P12-1b: reads resolve through the canonical registry (settings.ts).
+    // KNOBS is still the definition catalog for this UI surface (key,
+    // valueType, string default, range, units) — founderSettings.ts
+    // itself is retired in P12-1d. The response shape is unchanged:
+    // { settings: [{ key, value: string, source, definition }] }.
+    const { getSetting, getSettingRow } = await import("./services/settings");
+    const { KNOBS } = await import("./services/founderSettings");
+    const settings = await Promise.all(
+      KNOBS.map(async (def) => {
+        const typedDefault =
+          def.valueType === "number"
+            ? Number(def.defaultValue)
+            : def.valueType === "boolean"
+              ? def.defaultValue === "true"
+              : def.defaultValue;
+        const row = await getSettingRow(def.key);
+        const typed = await getSetting<unknown>(def.key, typedDefault);
+        const value =
+          typed === null || typed === undefined
+            ? def.defaultValue
+            : typeof typed === "string"
+              ? typed
+              : typeof typed === "number" || typeof typed === "boolean"
+                ? String(typed)
+                : JSON.stringify(typed);
+        // Canonical source mapping: a row the founder actually changed
+        // (lastChangedBy set) is "founder"; an untouched seed row shadowed
+        // by a registered env fallback is "env"; anything else is the
+        // seeded "default".
+        const source: "founder" | "env" | "default" = row?.lastChangedBy
+          ? "founder"
+          : def.envFallback && process.env[def.envFallback]
+            ? "env"
+            : "default";
+        return { key: def.key, value, source, definition: def };
+      }),
+    );
     res.json({ settings });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -2205,10 +2240,35 @@ router.get("/settings", requireFounder, async (_req: Request, res: Response) => 
 
 router.post("/settings/:key", requireFounder, async (req: any, res: Response) => {
   try {
-    const { setSetting } = await import("./services/founderSettings");
+    // P12-1b: writes go through canonical settings.setSetting (seeded-key
+    // guard + founder_audit row). The KNOBS validation below runs FIRST
+    // with the exact checks/messages founderSettings.setSetting used, so
+    // the founder-facing contract is unchanged. One named exception:
+    // archival.horizon_days — the canonical catalog's validRange is
+    // 30–730 vs the KNOBS 7–3650 (contradiction named in P12-1a, left
+    // unresolved by ruling), so canonical validation additionally
+    // rejects 7–29 / 731–3650 writes the old path accepted.
+    const { setSetting } = await import("./services/settings");
+    const { KNOBS } = await import("./services/founderSettings");
+    const key = routeParam(req.params.key);
+    const def = KNOBS.find((k) => k.key === key);
+    if (!def) {
+      throw new Error(`Unknown setting key: ${key}`);
+    }
     const value = String(req.body?.value ?? "");
+    let typed: unknown = value;
+    if (def.valueType === "number") {
+      const n = Number(value);
+      if (!Number.isFinite(n)) throw new Error(`${key} requires a numeric value`);
+      if (def.min != null && n < def.min) throw new Error(`${key} minimum is ${def.min}`);
+      if (def.max != null && n > def.max) throw new Error(`${key} maximum is ${def.max}`);
+      typed = n;
+    } else if (def.valueType === "boolean") {
+      if (value !== "true" && value !== "false") throw new Error(`${key} requires true|false`);
+      typed = value === "true";
+    }
     const userId = req.permissionContext?.userId ?? "founder";
-    await setSetting(routeParam(req.params.key), value, userId);
+    await setSetting({ key, value: typed, founderId: userId });
     res.json({ ok: true });
   } catch (err: any) {
     Errors.badRequest(res, err.message);

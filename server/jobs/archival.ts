@@ -52,7 +52,7 @@
 import { db, pool } from "../db";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
-import { getSetting, getNumberSetting } from "../services/founderSettings";
+import { getStringSetting, getNumberSetting } from "../services/settings";
 import { getStorage } from "../services/cmo/storage";
 import { clock } from "../utils/clock";
 
@@ -241,7 +241,7 @@ export async function runArchivalSweep(): Promise<{
   enabled: boolean;
   results: ArchivalSweepResult[];
 }> {
-  const enabledRaw = await getSetting("archival.enabled");
+  const enabledRaw = await getStringSetting("archival.enabled");
   if (enabledRaw !== "true") {
     return { enabled: false, results: [] };
   }
