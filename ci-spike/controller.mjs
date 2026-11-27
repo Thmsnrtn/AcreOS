@@ -305,13 +305,34 @@ async function handleWorkflowJob(payload) {
     record("job_completed", { ...base, conclusion: job.conclusion });
     if (FLY_TOKEN) {
       try {
-        const machines = await flyMachines("GET", "/machines");
-        const mine = (machines || []).find(
-          (m) => m.name === `fly-spike-${job.run_id}-${job.id}`,
-        );
-        if (mine) {
-          await flyMachines("DELETE", `/machines/${mine.id}?force=true`);
-          meterFinalize(mine.id, "job_completed");
+        // Destroy only the machine that RAN this job — resolved via the
+        // job's runner_name, never assumed from the job id. Machines are
+        // named for the job they were SPAWNED for, but JIT runners match
+        // by label, so the machine named for job A may be executing job
+        // B; deleting by job-id name killed a machine mid-vitest on
+        // 2026-11-27 (PR #870's run: the typecheck completion deleted
+        // the machine running shard 1 -> "runner lost communication").
+        // Any lookup failure means NO deletion: auto_destroy, the
+        // reaper, and meter reconciliation are the backstops.
+        let runnerName = null;
+        if (GH_TOKEN) {
+          try {
+            const j = await ghApi(
+              `/repos/${GH_REPO}/actions/runs/${job.run_id}/jobs?per_page=100`,
+            );
+            const mine = (j.jobs || []).find((x) => x.id === job.id);
+            runnerName = mine?.runner_name || null;
+          } catch {
+            runnerName = null;
+          }
+        }
+        if (runnerName && runnerName.startsWith("fly-spike-")) {
+          const machines = await flyMachines("GET", "/machines");
+          const mine = (machines || []).find((m) => m.name === runnerName);
+          if (mine) {
+            await flyMachines("DELETE", `/machines/${mine.id}?force=true`);
+            meterFinalize(mine.id, "job_completed");
+          }
         }
       } catch (e) {
         record("cleanup_error", { ...base, reason: String(e) });
