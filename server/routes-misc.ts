@@ -447,11 +447,12 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
           // P9-2a: regrid status resolves vault-first (a vault-only key has
           // no legacy row); other services keep the legacy read.
           // P9-2b: lob status resolves vault-first the same way.
+          // P9-2c: sendgrid status resolves vault-first the same way.
           let apiKey = creds?.apiKey;
-          if (service === "regrid" || service === "lob") {
+          if (service === "regrid" || service === "lob" || service === "sendgrid") {
             const { resolveProviderCredential } = await import("./services/providers/resolveProviderCredential");
             apiKey = (await resolveProviderCredential(org.id, {
-              channel: service === "lob" ? "lob" : "regrid",
+              channel: service === "lob" ? "lob" : service === "sendgrid" ? "sendgrid" : "regrid",
               legacyProvider: service,
               legacyField: "apiKey",
             })) ?? undefined;
@@ -494,9 +495,10 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       // P9-2a write freeze: a regrid key saved here lands in the canonical
       // vault via setByokCredential — never in the legacy store.
       // P9-2b: lob is frozen the same way.
-      if (service === "regrid" || service === "lob") {
+      // P9-2c: sendgrid is frozen the same way.
+      if (service === "regrid" || service === "lob" || service === "sendgrid") {
         const { setByokCredential } = await import("./services/byok/key-vault");
-        await setByokCredential({ organizationId: org.id, channel: service === "lob" ? "lob" : "regrid", plaintext: apiKey });
+        await setByokCredential({ organizationId: org.id, channel: service === "lob" ? "lob" : service === "sendgrid" ? "sendgrid" : "regrid", plaintext: apiKey });
         return res.json({ success: true, message: `${service} API key saved successfully` });
       }
 

@@ -35,6 +35,7 @@ export function registerIntegrationRoutes(app: Express): void {
       // legacy fallback) — a vault-only regrid key has no legacy row at all.
       // P9-2b: lob reads go through the same resolver (its legacy fallback is
       // inert once the write freeze + backfill have run).
+      // P9-2c: sendgrid reads go through the same resolver.
       const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
       const regridApiKey = await resolveProviderCredential(org.id, {
         channel: 'regrid',
@@ -46,6 +47,11 @@ export function registerIntegrationRoutes(app: Express): void {
         legacyProvider: 'lob',
         legacyField: 'apiKey',
       });
+      const sendgridApiKey = await resolveProviderCredential(org.id, {
+        channel: 'sendgrid',
+        legacyProvider: 'sendgrid',
+        legacyField: 'apiKey',
+      });
 
       const masked = integrations.map(i => {
         // Either stored shape. Keyed on `.encrypted` alone, this reported "not
@@ -53,6 +59,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const creds = readIntegrationCredentials<{ apiKey?: string }>(i, org.id, i.provider);
         const apiKey = i.provider === 'regrid' ? (regridApiKey ?? undefined)
           : i.provider === 'lob' ? (lobApiKey ?? undefined)
+          : i.provider === 'sendgrid' ? (sendgridApiKey ?? undefined)
           : creds?.apiKey;
         // An envelope we cannot open is still a configured key; saying "not
         // configured" would be false. Shown as configured but unreadable.
@@ -86,6 +93,16 @@ export function registerIntegrationRoutes(app: Express): void {
         } as typeof masked[number]);
       }
 
+      // P9-2c: same for a vault-only sendgrid key.
+      if (sendgridApiKey && !masked.some(m => m.provider === 'sendgrid')) {
+        masked.push({
+          organizationId: org.id,
+          provider: 'sendgrid',
+          isEnabled: true,
+          credentials: { hasApiKey: true, maskedKey: maskApiKey(sendgridApiKey) },
+        } as typeof masked[number]);
+      }
+
       res.json(masked);
     } catch (err: any) {
       logger.error("Get integrations error", err instanceof Error ? err : undefined);
@@ -103,10 +120,11 @@ export function registerIntegrationRoutes(app: Express): void {
       if (!integration) {
         // P9-2a: a vault-only regrid key has no legacy row — check the vault
         // before reporting "not configured". P9-2b: same for lob.
-        if (provider === 'regrid' || provider === 'lob') {
+        // P9-2c: same for sendgrid.
+        if (provider === 'regrid' || provider === 'lob' || provider === 'sendgrid') {
           const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
           const vaultKey = await resolveProviderCredential(org.id, {
-            channel: provider === 'lob' ? 'lob' : 'regrid',
+            channel: provider === 'lob' ? 'lob' : provider === 'sendgrid' ? 'sendgrid' : 'regrid',
             legacyProvider: provider,
             legacyField: 'apiKey',
           });
@@ -129,11 +147,12 @@ export function registerIntegrationRoutes(app: Express): void {
       const creds = readIntegrationCredentials<{ apiKey?: string }>(integration, org.id, provider);
       // P9-2a: regrid resolves vault-first; other providers keep the legacy read.
       // P9-2b: lob resolves vault-first the same way.
+      // P9-2c: sendgrid resolves vault-first the same way.
       let apiKey = creds?.apiKey;
-      if (provider === 'regrid' || provider === 'lob') {
+      if (provider === 'regrid' || provider === 'lob' || provider === 'sendgrid') {
         const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
         apiKey = (await resolveProviderCredential(org.id, {
-          channel: provider === 'lob' ? 'lob' : 'regrid',
+          channel: provider === 'lob' ? 'lob' : provider === 'sendgrid' ? 'sendgrid' : 'regrid',
           legacyProvider: provider,
           legacyField: 'apiKey',
         })) ?? undefined;
@@ -177,6 +196,7 @@ export function registerIntegrationRoutes(app: Express): void {
       // legacy organizationIntegrations store after this PR. Other providers
       // keep the legacy sealed write until their own flip slices.
       // P9-2b: lob is frozen the same way.
+      // P9-2c: sendgrid is frozen the same way.
       let integration: { isEnabled: boolean | null };
       if (provider === 'regrid') {
         const { setByokCredential } = await import('./services/byok/key-vault');
@@ -185,6 +205,10 @@ export function registerIntegrationRoutes(app: Express): void {
       } else if (provider === 'lob') {
         const { setByokCredential } = await import('./services/byok/key-vault');
         await setByokCredential({ organizationId: org.id, channel: 'lob', plaintext: apiKey });
+        integration = { isEnabled: true };
+      } else if (provider === 'sendgrid') {
+        const { setByokCredential } = await import('./services/byok/key-vault');
+        await setByokCredential({ organizationId: org.id, channel: 'sendgrid', plaintext: apiKey });
         integration = { isEnabled: true };
       } else {
         integration = await storage.upsertOrganizationIntegration({
@@ -236,15 +260,16 @@ export function registerIntegrationRoutes(app: Express): void {
       const { readIntegrationCredentials } = await import('./services/integrationCredentials');
       // P9-2a: regrid tests the vault-first resolved key; others read legacy.
       // P9-2b: lob tests the vault-first resolved key the same way.
+      // P9-2c: sendgrid tests the vault-first resolved key the same way.
       let credentials = readIntegrationCredentials<{ apiKey: string }>(
         integration,
         org.id,
         `${provider} test`,
       );
-      if (provider === 'regrid' || provider === 'lob') {
+      if (provider === 'regrid' || provider === 'lob' || provider === 'sendgrid') {
         const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
         const resolved = await resolveProviderCredential(org.id, {
-          channel: provider === 'lob' ? 'lob' : 'regrid',
+          channel: provider === 'lob' ? 'lob' : provider === 'sendgrid' ? 'sendgrid' : 'regrid',
           legacyProvider: provider,
           legacyField: 'apiKey',
         });
@@ -352,6 +377,11 @@ export function registerIntegrationRoutes(app: Express): void {
       if (provider === 'lob') {
         const { revokeByokCredential } = await import('./services/byok/key-vault');
         await revokeByokCredential({ organizationId: org.id, channel: 'lob' });
+      }
+      // P9-2c: same for a sendgrid disconnect.
+      if (provider === 'sendgrid') {
+        const { revokeByokCredential } = await import('./services/byok/key-vault');
+        await revokeByokCredential({ organizationId: org.id, channel: 'sendgrid' });
       }
 
       await storage.deleteOrganizationIntegration(org.id, provider);
@@ -489,16 +519,18 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, "Domain already exists");
       }
       
-      const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
       let dnsRecords: any[] = [];
       let sendgridDomainId: string | undefined;
-      
-      const { readIntegrationCredentials } = await import('./services/integrationCredentials');
-      const credentials = readIntegrationCredentials<{ apiKey: string }>(
-        integration,
-        org.id,
-        'sendgrid',
-      );
+
+      // P9-2c: the SendGrid key resolves vault-first (vault, then legacy
+      // fallback) — a vault-only key has no legacy row to read here.
+      const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
+      const sendgridApiKey = await resolveProviderCredential(org.id, {
+        channel: 'sendgrid',
+        legacyProvider: 'sendgrid',
+        legacyField: 'apiKey',
+      });
+      const credentials = sendgridApiKey ? { apiKey: sendgridApiKey } : null;
       if (credentials?.apiKey) {
         
         try {
@@ -587,13 +619,14 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, "Domain not registered with SendGrid");
       }
 
-      const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
-      const { readIntegrationCredentials } = await import('./services/integrationCredentials');
-      const credentials = readIntegrationCredentials<{ apiKey: string }>(
-        integration,
-        org.id,
-        'sendgrid',
-      );
+      // P9-2c: vault-first resolver (see POST /api/email-domains).
+      const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
+      const sendgridApiKey = await resolveProviderCredential(org.id, {
+        channel: 'sendgrid',
+        legacyProvider: 'sendgrid',
+        legacyField: 'apiKey',
+      });
+      const credentials = sendgridApiKey ? { apiKey: sendgridApiKey } : null;
       if (!credentials?.apiKey) {
         return Errors.badRequest(res, "SendGrid not configured");
       }
@@ -705,13 +738,14 @@ export function registerIntegrationRoutes(app: Express): void {
       }
 
       if (domainRecord.sendgridDomainId) {
-        const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
-        const { readIntegrationCredentials } = await import('./services/integrationCredentials');
-        const credentials = readIntegrationCredentials<{ apiKey: string }>(
-          integration,
-          org.id,
-          'sendgrid',
-        );
+        // P9-2c: vault-first resolver (see POST /api/email-domains).
+        const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
+        const sendgridApiKey = await resolveProviderCredential(org.id, {
+          channel: 'sendgrid',
+          legacyProvider: 'sendgrid',
+          legacyField: 'apiKey',
+        });
+        const credentials = sendgridApiKey ? { apiKey: sendgridApiKey } : null;
         if (credentials?.apiKey) {
           try {
 
