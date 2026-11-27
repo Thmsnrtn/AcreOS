@@ -12,9 +12,6 @@
  */
 import type { Request } from "express";
 import crypto from "crypto";
-import { db } from "../../../db";
-import { organizationIntegrations } from "@shared/schema";
-import { and, eq } from "drizzle-orm";
 import { logger } from "../../../utils/logger";
 import { assertOwnerContactAllowed } from "../../trust/ownerSuppression";
 import {
@@ -36,10 +33,13 @@ interface TwilioCredentials {
 }
 
 async function getOrgTwilioCredentials(organizationId: number): Promise<TwilioCredentials | null> {
-  // Universal BYOK (2026-05-22): prefer the canonical byok_credentials row.
-  // The plaintext format is "<accountSid>:<authToken>:<phoneNumber>" so the
-  // single-secret vault can carry a multi-secret tuple. If absent, fall
-  // back to the legacy organization_integrations row for back-compat.
+  // Universal BYOK (2026-05-22): the canonical byok_credentials row is the
+  // ONLY org-credential store for twilio (P9-2d: the legacy
+  // organization_integrations fallback leg is removed — the write freeze
+  // plus the Stage-2 backfill (twilioBackfill) make the vault the single
+  // authority, exactly as the lob flip did). The plaintext format is
+  // "<accountSid>:<authToken>:<phoneNumber>" so the single-secret vault
+  // can carry a multi-secret tuple.
   try {
     const { getByokCredential } = await import("../../byok/key-vault");
     const blob = await getByokCredential({ organizationId, channel: "twilio" });
@@ -50,31 +50,9 @@ async function getOrgTwilioCredentials(organizationId: number): Promise<TwilioCr
       }
     }
   } catch {
-    /* fall through to legacy lookup */
+    /* vault read failed — no org credential (platform fallback is the caller's) */
   }
-
-  const [row] = await db
-    .select()
-    .from(organizationIntegrations)
-    .where(
-      and(
-        eq(organizationIntegrations.organizationId, organizationId),
-        eq(organizationIntegrations.provider, "twilio"),
-        eq(organizationIntegrations.isEnabled, true),
-      ),
-    )
-    .limit(1);
-  if (!row || !row.credentials) return null;
-  // Sealed rows decrypt; a legacy plaintext row still reads (and the next
-  // save seals it) — integrationCredentials.readIntegrationCredentials.
-  const { readIntegrationCredentials } = await import("../../integrationCredentials");
-  const creds: { accountSid?: string; authToken?: string; fromPhoneNumber?: string } = readIntegrationCredentials<{ accountSid?: string; authToken?: string; fromPhoneNumber?: string }>(row, organizationId, "twilio byok") ?? {};
-  if (!creds.accountSid || !creds.authToken || !creds.fromPhoneNumber) return null;
-  return {
-    accountSid: creds.accountSid,
-    authToken: creds.authToken,
-    phoneNumber: creds.fromPhoneNumber,
-  };
+  return null;
 }
 
 function platformCredentials(): TwilioCredentials | null {

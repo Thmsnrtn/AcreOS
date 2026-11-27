@@ -17,6 +17,51 @@ import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 
+/**
+ * P9-2d: the vault value for twilio IS the tuple
+ * "<accountSid>:<authToken>:<phoneNumber>". Where a surface needs the
+ * single token (the display/test surfaces whose legacy field is
+ * authToken), parse the tuple: a 3-part colon value yields its middle
+ * part. A value with no tuple shape is already a bare token — that is
+ * what the resolver's legacy fallback returns (the legacy authToken
+ * field), so it passes through unchanged.
+ */
+function twilioAuthTokenFromResolved(resolved: string): string {
+  const parts = resolved.split(":");
+  return parts.length === 3 && parts.every(Boolean) ? parts[1] : resolved;
+}
+
+/**
+ * P9-2d: the {accountSid, authToken} pair the phone-number surfaces act
+ * with, resolved vault-first (tuple parse) with the legacy bag as
+ * fallback for rows the Stage-2 backfill has not migrated yet.
+ */
+async function resolveTwilioTuple(
+  orgId: number,
+): Promise<{ accountSid: string; authToken: string } | null> {
+  try {
+    const { getByokCredential } = await import('./services/byok/key-vault');
+    const blob = await getByokCredential({ organizationId: orgId, channel: 'twilio' });
+    if (blob) {
+      const parts = blob.split(":");
+      if (parts.length === 3 && parts.every(Boolean)) {
+        return { accountSid: parts[0], authToken: parts[1] };
+      }
+    }
+  } catch { /* fall through to the legacy bag */ }
+  const integration = await storage.getOrganizationIntegration(orgId, 'twilio');
+  const { readIntegrationCredentials } = await import('./services/integrationCredentials');
+  const creds = readIntegrationCredentials<{ accountSid: string; authToken: string }>(
+    integration,
+    orgId,
+    'twilio',
+  );
+  if (creds?.accountSid && creds?.authToken) {
+    return { accountSid: creds.accountSid, authToken: creds.authToken };
+  }
+  return null;
+}
+
 export function registerIntegrationRoutes(app: Express): void {
   const api = app;
 
@@ -52,6 +97,18 @@ export function registerIntegrationRoutes(app: Express): void {
         legacyProvider: 'sendgrid',
         legacyField: 'apiKey',
       });
+      // P9-2d: twilio resolves through the same resolver (channel/legacy
+      // provider 'twilio', legacy field 'authToken'). The resolver returns
+      // the stored string: for twilio the vault value IS the tuple
+      // "<accountSid>:<authToken>:<phoneNumber>", so the token this
+      // display surface masks is parsed out of the tuple; the legacy
+      // fallback already returns the bare authToken.
+      const twilioResolved = await resolveProviderCredential(org.id, {
+        channel: 'twilio',
+        legacyProvider: 'twilio',
+        legacyField: 'authToken',
+      });
+      const twilioApiKey = twilioResolved ? twilioAuthTokenFromResolved(twilioResolved) : null;
 
       const masked = integrations.map(i => {
         // Either stored shape. Keyed on `.encrypted` alone, this reported "not
@@ -60,6 +117,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const apiKey = i.provider === 'regrid' ? (regridApiKey ?? undefined)
           : i.provider === 'lob' ? (lobApiKey ?? undefined)
           : i.provider === 'sendgrid' ? (sendgridApiKey ?? undefined)
+          : i.provider === 'twilio' ? (twilioApiKey ?? undefined)
           : creds?.apiKey;
         // An envelope we cannot open is still a configured key; saying "not
         // configured" would be false. Shown as configured but unreadable.
@@ -103,6 +161,17 @@ export function registerIntegrationRoutes(app: Express): void {
         } as typeof masked[number]);
       }
 
+      // P9-2d: same for a vault-only twilio credential (masked on its
+      // auth token, parsed out of the vault tuple).
+      if (twilioApiKey && !masked.some(m => m.provider === 'twilio')) {
+        masked.push({
+          organizationId: org.id,
+          provider: 'twilio',
+          isEnabled: true,
+          credentials: { hasApiKey: true, maskedKey: maskApiKey(twilioApiKey) },
+        } as typeof masked[number]);
+      }
+
       res.json(masked);
     } catch (err: any) {
       logger.error("Get integrations error", err instanceof Error ? err : undefined);
@@ -121,13 +190,16 @@ export function registerIntegrationRoutes(app: Express): void {
         // P9-2a: a vault-only regrid key has no legacy row — check the vault
         // before reporting "not configured". P9-2b: same for lob.
         // P9-2c: same for sendgrid.
-        if (provider === 'regrid' || provider === 'lob' || provider === 'sendgrid') {
+        // P9-2d: same for twilio — its resolver legacy field is authToken
+        // and its vault value is the tuple, masked on the parsed token.
+        if (provider === 'regrid' || provider === 'lob' || provider === 'sendgrid' || provider === 'twilio') {
           const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
-          const vaultKey = await resolveProviderCredential(org.id, {
-            channel: provider === 'lob' ? 'lob' : provider === 'sendgrid' ? 'sendgrid' : 'regrid',
+          const resolved = await resolveProviderCredential(org.id, {
+            channel: provider === 'lob' ? 'lob' : provider === 'sendgrid' ? 'sendgrid' : provider === 'twilio' ? 'twilio' : 'regrid',
             legacyProvider: provider,
-            legacyField: 'apiKey',
+            legacyField: provider === 'twilio' ? 'authToken' : 'apiKey',
           });
+          const vaultKey = resolved && provider === 'twilio' ? twilioAuthTokenFromResolved(resolved) : resolved;
           if (vaultKey) {
             const { maskApiKey } = await import('./services/fieldEncryption');
             return res.json({
@@ -148,14 +220,18 @@ export function registerIntegrationRoutes(app: Express): void {
       // P9-2a: regrid resolves vault-first; other providers keep the legacy read.
       // P9-2b: lob resolves vault-first the same way.
       // P9-2c: sendgrid resolves vault-first the same way.
+      // P9-2d: twilio resolves vault-first the same way — legacy field
+      // authToken; the vault value is the tuple, so the displayed key is
+      // the token parsed out of it.
       let apiKey = creds?.apiKey;
-      if (provider === 'regrid' || provider === 'lob' || provider === 'sendgrid') {
+      if (provider === 'regrid' || provider === 'lob' || provider === 'sendgrid' || provider === 'twilio') {
         const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
-        apiKey = (await resolveProviderCredential(org.id, {
-          channel: provider === 'lob' ? 'lob' : provider === 'sendgrid' ? 'sendgrid' : 'regrid',
+        const resolved = await resolveProviderCredential(org.id, {
+          channel: provider === 'lob' ? 'lob' : provider === 'sendgrid' ? 'sendgrid' : provider === 'twilio' ? 'twilio' : 'regrid',
           legacyProvider: provider,
-          legacyField: 'apiKey',
-        })) ?? undefined;
+          legacyField: provider === 'twilio' ? 'authToken' : 'apiKey',
+        });
+        apiKey = resolved && provider === 'twilio' ? twilioAuthTokenFromResolved(resolved) : (resolved ?? undefined);
       }
       const unreadable =
         !!(integration.credentials as { encrypted?: string } | null)?.encrypted && !creds;
@@ -179,6 +255,17 @@ export function registerIntegrationRoutes(app: Express): void {
       const org = req.organization;
       const provider = routeParam(req.params.provider);
       const { apiKey, settings } = req.body;
+
+      // P9-2d (coordinator ruling, Option A): twilio writes are REJECTED
+      // here. This route receives only a single key (the auth token, with
+      // the account SID in settings) and never a phone number, so it
+      // cannot form the vault tuple "<accountSid>:<authToken>:<phone
+      // Number>" every twilio send path requires — a legacy row written
+      // from it was unusable. The full credential is saved via the SMS
+      // settings (POST /api/sms/config) or the BYOK hub instead.
+      if (provider === 'twilio') {
+        return Errors.badRequest(res, "Twilio cannot be saved here: it needs the full credential (account SID, auth token, and phone number). Save it via the SMS settings (POST /api/sms/config) or the BYOK hub.");
+      }
 
       if (!apiKey) {
         return Errors.badRequest(res, "API key is required");
@@ -266,14 +353,18 @@ export function registerIntegrationRoutes(app: Express): void {
         org.id,
         `${provider} test`,
       );
-      if (provider === 'regrid' || provider === 'lob' || provider === 'sendgrid') {
+      if (provider === 'regrid' || provider === 'lob' || provider === 'sendgrid' || provider === 'twilio') {
         const { resolveProviderCredential } = await import('./services/providers/resolveProviderCredential');
         const resolved = await resolveProviderCredential(org.id, {
-          channel: provider === 'lob' ? 'lob' : provider === 'sendgrid' ? 'sendgrid' : 'regrid',
+          channel: provider === 'lob' ? 'lob' : provider === 'sendgrid' ? 'sendgrid' : provider === 'twilio' ? 'twilio' : 'regrid',
           legacyProvider: provider,
-          legacyField: 'apiKey',
+          legacyField: provider === 'twilio' ? 'authToken' : 'apiKey',
         });
-        credentials = resolved ? { apiKey: resolved } : null;
+        // P9-2d: for twilio the resolved vault value IS the tuple; the
+        // test branch below Basic-auths with the auth token, parsed out
+        // of the tuple here (the legacy fallback already returns the
+        // bare authToken, which passes through unchanged).
+        credentials = resolved ? { apiKey: provider === 'twilio' ? twilioAuthTokenFromResolved(resolved) : resolved } : null;
       }
 
       // Was `decryptJsonCredentials(credentials.encrypted)` guarded only by
@@ -382,6 +473,11 @@ export function registerIntegrationRoutes(app: Express): void {
       if (provider === 'sendgrid') {
         const { revokeByokCredential } = await import('./services/byok/key-vault');
         await revokeByokCredential({ organizationId: org.id, channel: 'sendgrid' });
+      }
+      // P9-2d: same for a twilio disconnect.
+      if (provider === 'twilio') {
+        const { revokeByokCredential } = await import('./services/byok/key-vault');
+        await revokeByokCredential({ organizationId: org.id, channel: 'twilio' });
       }
 
       await storage.deleteOrganizationIntegration(org.id, provider);
@@ -808,13 +904,8 @@ export function registerIntegrationRoutes(app: Express): void {
       const org = req.organization;
       const { areaCode, contains, country } = req.query;
       
-      const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
-      const { readIntegrationCredentials } = await import('./services/integrationCredentials');
-      const credentials = readIntegrationCredentials<{ accountSid: string; authToken: string }>(
-        integration,
-        org.id,
-        'twilio',
-      );
+      // P9-2d: the tuple resolves vault-first (legacy bag as fallback).
+      const credentials = await resolveTwilioTuple(org.id);
       if (!credentials?.accountSid || !credentials?.authToken) {
         return Errors.badRequest(res, "Twilio not configured. Add your Twilio credentials in Settings.");
       }
@@ -869,13 +960,8 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.badRequest(res, "Phone number is required");
       }
       
-      const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
-      const { readIntegrationCredentials } = await import('./services/integrationCredentials');
-      const credentials = readIntegrationCredentials<{ accountSid: string; authToken: string }>(
-        integration,
-        org.id,
-        'twilio',
-      );
+      // P9-2d: the tuple resolves vault-first (legacy bag as fallback).
+      const credentials = await resolveTwilioTuple(org.id);
       if (!credentials?.accountSid || !credentials?.authToken) {
         return Errors.badRequest(res, "Twilio not configured");
       }
@@ -1000,13 +1086,8 @@ export function registerIntegrationRoutes(app: Express): void {
       }
 
       if (phoneRecord.twilioSid) {
-        const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
-        const { readIntegrationCredentials } = await import('./services/integrationCredentials');
-        const credentials = readIntegrationCredentials<{ accountSid: string; authToken: string }>(
-          integration,
-          org.id,
-          'twilio',
-        );
+        // P9-2d: the tuple resolves vault-first (legacy bag as fallback).
+        const credentials = await resolveTwilioTuple(org.id);
         if (credentials?.accountSid && credentials?.authToken) {
           try {
 

@@ -16,8 +16,9 @@
  * Preserved behaviour:
  *   - Simulation mode still short-circuits sends (handled inside the
  *     Twilio adapter so all paths agree)
- *   - BYOK Twilio creds still resolved from organizationIntegrations
- *     when `organizationId` is supplied (handled inside the adapter)
+ *   - BYOK Twilio creds resolved from the canonical byok vault when
+ *     `organizationId` is supplied (handled inside the adapter; P9-2d
+ *     removed the adapter's legacy organizationIntegrations fallback)
  *   - Pillar 1.6 ledger post on successful send still fires per
  *     organization-scoped send
  *   - STOP-keyword TCPA handling unchanged
@@ -894,30 +895,26 @@ export async function checkTwilioConfiguration(organizationId: number): Promise<
   phoneNumber?: string;
   error?: string;
 }> {
-  const [twilioIntegration] = await db
-    .select()
-    .from(organizationIntegrations)
-    .where(
-      and(
-        eq(organizationIntegrations.organizationId, organizationId),
-        eq(organizationIntegrations.provider, "twilio"),
-        eq(organizationIntegrations.isEnabled, true),
-      ),
-    )
-    .limit(1);
+  // P9-2d: vault-first — the org's twilio credential lives in the canonical
+  // byok vault as the tuple "<accountSid>:<authToken>:<phoneNumber>" (the
+  // legacy organizationIntegrations read this replaced was legacy-only).
+  // Platform fallback semantics are preserved: with no org credential, a
+  // platform-configured deployment still reports configured.
+  const { getByokCredential } = await import("./byok/key-vault");
+  const blob = await getByokCredential({ organizationId, channel: "twilio" }).catch(() => null);
 
-  if (!twilioIntegration || !twilioIntegration.credentials) {
+  if (!blob) {
     if (twilioProvider.isConfigured()) {
       return { configured: true, phoneNumber: process.env.TWILIO_PHONE_NUMBER };
     }
     return { configured: false, error: "Twilio credentials not configured" };
   }
 
-  const { readIntegrationCredentials } = await import("./integrationCredentials");
-  const creds: { accountSid?: string; authToken?: string; fromPhoneNumber?: string } = readIntegrationCredentials<{ accountSid?: string; authToken?: string; fromPhoneNumber?: string }>(twilioIntegration, organizationId, "twilio check") ?? {};
-  if (!creds.accountSid || !creds.authToken || !creds.fromPhoneNumber) {
+  const parts = blob.split(":");
+  if (parts.length !== 3 || !parts.every(Boolean)) {
     return { configured: false, error: "Twilio credentials incomplete" };
   }
+  const creds = { accountSid: parts[0], authToken: parts[1], fromPhoneNumber: parts[2] };
 
   try {
     const url = `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}.json`;
@@ -948,6 +945,22 @@ export async function saveTwilioCredentials(
     };
   }
 
+  // P9-2d: the verified credential persists ONLY in the canonical byok
+  // vault, as the tuple "<accountSid>:<authToken>:<phoneNumber>" every
+  // twilio reader parses — never again sealed into the legacy
+  // organizationIntegrations bag.
+  const { setByokCredential } = await import("./byok/key-vault");
+  await setByokCredential({
+    organizationId,
+    channel: "twilio",
+    plaintext: `${accountSid}:${authToken}:${fromPhoneNumber}`,
+  });
+
+  // The legacy row's NON-credential state is preserved exactly as before
+  // (enabled + validation stamps — status surfaces read them); only the
+  // credential persistence moved. An update leaves any existing legacy
+  // credential bag untouched (its retirement is Stage 4); an insert
+  // creates the row with no credentials at all.
   const [existing] = await db
     .select()
     .from(organizationIntegrations)
@@ -959,16 +972,10 @@ export async function saveTwilioCredentials(
     )
     .limit(1);
 
-  // Sealed like every other connected-account credential in this column
-  // (integrationCredentials.ts). This path wrote the auth token in the clear.
-  const { sealIntegrationCredentials } = await import("./integrationCredentials");
-  const credentials = sealIntegrationCredentials({ accountSid, authToken, fromPhoneNumber }, organizationId);
-
   if (existing) {
     await db
       .update(organizationIntegrations)
       .set({
-        credentials,
         isEnabled: true,
         lastValidatedAt: clock.now(),
         validationError: null,
@@ -980,7 +987,6 @@ export async function saveTwilioCredentials(
       organizationId,
       provider: "twilio",
       isEnabled: true,
-      credentials,
       lastValidatedAt: clock.now(),
     });
   }
