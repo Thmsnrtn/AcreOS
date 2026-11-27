@@ -312,6 +312,12 @@ export type ContractRefusal =
       hardStop: null;
     }
   | {
+      code: "DEAL_TYPE_NOT_SUPPORTED";
+      dealType: string;
+      message: string;
+      hardStop: null;
+    }
+  | {
       code: "MISSING_REQUIRED_FIELDS";
       missing: MissingField[];
       message: string;
@@ -591,6 +597,29 @@ function collectMissing(specs: FieldSpec[]): MissingField[] {
  */
 export function assembleContract(input: ContractAssemblyInput): ContractAssemblyResult {
   const { kind, deal, property } = input;
+
+  // 0. Which side of the sale the org is on. The purchase agreement names the
+  //    ORG as BUYER and the property's seller contact as SELLER — true only
+  //    when the org is buying. On a disposition the org is the seller, so the
+  //    same fill would print the parties the wrong way round. Refused by name.
+  //    (`deal.type` is NOT NULL on every stored deal; a pure caller that omits
+  //    it keeps the behaviour it always had.)
+  if (kind === "purchase_agreement" && typeof deal.type === "string" && deal.type !== "acquisition") {
+    const label = deal.type === "disposition" ? "a sale (disposition)" : `a "${deal.type}"`;
+    return {
+      ok: false,
+      refusal: {
+        code: "DEAL_TYPE_NOT_SUPPORTED",
+        dealType: deal.type,
+        hardStop: null,
+        message:
+          `This is ${label} deal. The purchase agreement AcreOS assembles names your organization ` +
+          `as the BUYER and this property's seller contact as the SELLER, which is only true when ` +
+          `you are buying. AcreOS will not print the parties the wrong way round — use your own ` +
+          `sale contract for this deal.`,
+      },
+    };
+  }
 
   // 1. The offer must actually be accepted. No contract off a live negotiation.
   if (!(CONTRACT_ELIGIBLE_DEAL_STATUSES as readonly string[]).includes(deal.status)) {
