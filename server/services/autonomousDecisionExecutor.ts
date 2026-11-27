@@ -205,7 +205,7 @@ const EXECUTOR_CONFIG = {
   // Tier 1: $0-$500 (single agent), Tier 2: $500-$2,500 (multi-agent), Tier 3: $2,500-$10K,
   // Tier 4: $10K-$50K (quorum), Tier 5: $50K+ (founder required).
   // The old flat MAX_FINANCIAL_IMPACT_CENTS is kept as Tier 5 hard stop.
-  MAX_FINANCIAL_IMPACT_CENTS: parseInt(process.env.AUTONOMOUS_MAX_FINANCIAL_IMPACT || "5000000"), // $50,000 — Tier 5 hard stop
+  MAX_FINANCIAL_IMPACT_CENTS: parseInt(process.env.AUTONOMOUS_MAX_FINANCIAL_IMPACT || "1000000"), // $10,000 — Tier 5 hard stop; env-unset default == KNOBS/seeded MAX_FINANCIAL_IMPACT_CENTS default (P12-1b audit N1: this is the caller fallback when the settings read returns null/error, so it must match the seeded default, not exceed it)
   GRADUATED_FINANCIAL_AUTHORITY_ENABLED: process.env.GRADUATED_FINANCIAL_AUTHORITY !== "false",
 
   // Hard-stop item types that NEVER auto-execute regardless of confidence.
