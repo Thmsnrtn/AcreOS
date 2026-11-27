@@ -106,6 +106,10 @@ const PREPARED_TOOL_WORDS: Readonly<Record<string, readonly [string, string]>> =
   trigger_make: ["Make trigger", "Make triggers"],
   create_calendar_event: ["calendar invite", "calendar invites"],
   send_borrower_reminder: ["borrower payment reminder", "borrower payment reminders"],
+  // A rehab's exit decision and the realized facts at close are write-once
+  // records, gated by the tap exactly like a send (2026-11-24) — the brief
+  // names them in the same plain words.
+  record_exit_facts: ["flip exit record", "flip exit records"],
 };
 
 export function composeBriefSections(inputs: BriefSectionInputs): BriefSections {
