@@ -541,6 +541,12 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "get_land_listing",
       "get_listing_paste_text",
       "get_land_payoff_quote",
+      "get_rehab_projects",
+      "get_rehab_detail",
+      "get_flip_analysis",
+      "get_lease_abstract",
+      "get_lease_rent_steps",
+      "get_lease_cam_status",
       "calculate_amortization",
       "calculate_payment_schedule",
       "calculate_roi",
@@ -597,6 +603,10 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
   ...recordTools("deals", ["record_buyer_blast_response"], "executeTool"),
   // Marking a listing listed is a change to a property's disposition record — the properties rail.
   ...recordTools("properties", ["mark_land_listing_listed"], "executeTool"),
+  // A holding-cost entry is an append-only record on a rehab the customer holds — the deals rail.
+  ...recordTools("deals", ["append_holding_cost_entry"], "executeTool"),
+  // A tenant sales report is a record on a lease the customer holds — the deals rail.
+  ...recordTools("deals", ["record_tenant_sales_report"], "executeTool"),
   ...recordTools("tasks", ["create_task", "update_task", "complete_task"], "executeTool"),
   ...recordTools("follow_ups", ["schedule_followup", "schedule_follow_up"], "executeTool"),
   // APPROVAL_REQUIRED_TOOLS (server/services/approvalKernel.ts) — may only grow.
@@ -612,6 +622,10 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "trigger_zapier",
       "trigger_make",
       "create_calendar_event",
+      // A write-once exit/realized record, not a send: it sits in the
+      // waits-for-a-tap group because it is in APPROVAL_REQUIRED_TOOLS —
+      // it never executes without the customer's tap, and it sends nothing.
+      "record_exit_facts",
     ],
     "sends",
     "executeTool",
@@ -654,6 +668,9 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "get_lease_ledger_view",
       "get_listing_paste_text_view",
       "get_parcel_passport_view",
+      "get_lease_abstract_view",
+      "get_lease_cam_status_view",
+      "get_lease_rent_steps_view",
       "get_payment_history",
       "get_rent_roll_view",
       "get_rental_leases_view",
