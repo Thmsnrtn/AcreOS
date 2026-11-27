@@ -496,8 +496,16 @@ export class FinanceAgentService {
         accessKeyId?: string;
         secretAccessKey?: string;
       }>(integration, orgId, "aws_ses identity check");
+      // P9-2e: vault-first, mirroring emailService.getOrgCredentials — the
+      // org's SES bag in the byok vault (channel 'ses', the vault name for
+      // this legacy 'aws_ses' provider; JSON bag via sesCredential) counts
+      // as connected on the same both-fields gate. The legacy leg stays
+      // for rows the Stage-2 backfill has not migrated yet.
+      const { readSesVaultBag } = await import("./providers/sesCredential");
+      const vaultSes = await readSesVaultBag(orgId);
       const byoSes =
-        !!integration?.isEnabled && !!ses?.accessKeyId && !!ses?.secretAccessKey;
+        !!vaultSes ||
+        (!!integration?.isEnabled && !!ses?.accessKeyId && !!ses?.secretAccessKey);
       return byoSes || !!identity;
     } catch (error) {
       logger.warn("[FinanceAgent] Could not verify the org's sending identity — treating as absent", {
