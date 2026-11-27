@@ -470,6 +470,24 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
           // is the token parsed out of the tuple (the resolver's legacy
           // fallback already returns the bare authToken).
           let apiKey = creds?.apiKey;
+          if (service === "regrid" || service === "lob" || service === "sendgrid" || service === "twilio") {
+            const { resolveProviderCredential } = await import("./services/providers/resolveProviderCredential");
+            const resolved = await resolveProviderCredential(org.id, {
+              channel: service === "lob" ? "lob" : service === "sendgrid" ? "sendgrid" : service === "twilio" ? "twilio" : "regrid",
+              legacyProvider: service,
+              legacyField: service === "twilio" ? "authToken" : "apiKey",
+            });
+            if (service === "twilio") {
+              if (resolved) {
+                const parts = resolved.split(":");
+                apiKey = parts.length === 3 && parts.every(Boolean) ? parts[1] : resolved;
+              } else {
+                apiKey = undefined;
+              }
+            } else {
+              apiKey = resolved ?? undefined;
+            }
+          }
           // P9-2e: aws_ses status resolves vault-first via its JSON bag
           // (channel 'ses', the vault name for the legacy 'aws_ses'
           // provider); the displayed key is the accessKeyId, reported
@@ -488,24 +506,6 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
                 "aws_ses status",
               );
               apiKey = legacySes?.accessKeyId && legacySes?.secretAccessKey ? legacySes.accessKeyId : undefined;
-            }
-          }
-          if (service === "regrid" || service === "lob" || service === "sendgrid" || service === "twilio") {
-            const { resolveProviderCredential } = await import("./services/providers/resolveProviderCredential");
-            const resolved = await resolveProviderCredential(org.id, {
-              channel: service === "lob" ? "lob" : service === "sendgrid" ? "sendgrid" : service === "twilio" ? "twilio" : "regrid",
-              legacyProvider: service,
-              legacyField: service === "twilio" ? "authToken" : "apiKey",
-            });
-            if (service === "twilio") {
-              if (resolved) {
-                const parts = resolved.split(":");
-                apiKey = parts.length === 3 && parts.every(Boolean) ? parts[1] : resolved;
-              } else {
-                apiKey = undefined;
-              }
-            } else {
-              apiKey = resolved ?? undefined;
             }
           }
           return {

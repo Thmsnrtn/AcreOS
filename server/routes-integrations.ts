@@ -327,25 +327,9 @@ export function registerIntegrationRoutes(app: Express): void {
       // keep the legacy sealed write until their own flip slices.
       // P9-2b: lob is frozen the same way.
       // P9-2c: sendgrid is frozen the same way.
-      // P9-2e: aws_ses is frozen the same way — and it is NEWLY accepted
-      // here: neither generic route took aws_ses before this slice, so
-      // there is no live legacy write to freeze; accepting it vault-only
-      // (the JSON bag in channel 'ses', built by buildSesVaultPlaintext
-      // from this route's historical {apiKey, ...settings} shape) means
-      // no aws_ses save can ever create a legacy row. A save missing the
-      // access key id or the secret access key is rejected — a partial
-      // bag is never vaulted.
+      // P9-2e: aws_ses joins the freeze as the last branch below.
       let integration: { isEnabled: boolean | null };
-      if (provider === 'aws_ses') {
-        const { buildSesVaultPlaintext } = await import('./services/providers/sesCredential');
-        const plaintext = buildSesVaultPlaintext(apiKey, settings);
-        if (!plaintext) {
-          return Errors.badRequest(res, "AWS SES needs both the access key ID (apiKey, or settings.accessKeyId) and settings.secretAccessKey. Save the full credential here or via the BYOK hub (channel 'ses').");
-        }
-        const { setByokCredential } = await import('./services/byok/key-vault');
-        await setByokCredential({ organizationId: org.id, channel: 'ses', plaintext });
-        integration = { isEnabled: true };
-      } else if (provider === 'regrid') {
+      if (provider === 'regrid') {
         const { setByokCredential } = await import('./services/byok/key-vault');
         await setByokCredential({ organizationId: org.id, channel: 'regrid', plaintext: apiKey });
         integration = { isEnabled: true };
@@ -356,6 +340,23 @@ export function registerIntegrationRoutes(app: Express): void {
       } else if (provider === 'sendgrid') {
         const { setByokCredential } = await import('./services/byok/key-vault');
         await setByokCredential({ organizationId: org.id, channel: 'sendgrid', plaintext: apiKey });
+        integration = { isEnabled: true };
+      } else if (provider === 'aws_ses') {
+        // P9-2e: aws_ses is frozen the same way — and it is NEWLY accepted
+        // here: neither generic route took aws_ses before this slice, so
+        // there is no live legacy write to freeze; accepting it vault-only
+        // (the JSON bag in channel 'ses', built by buildSesVaultPlaintext
+        // from this route's historical {apiKey, ...settings} shape) means
+        // no aws_ses save can ever create a legacy row. A save missing the
+        // access key id or the secret access key is rejected — a partial
+        // bag is never vaulted.
+        const { buildSesVaultPlaintext } = await import('./services/providers/sesCredential');
+        const plaintext = buildSesVaultPlaintext(apiKey, settings);
+        if (!plaintext) {
+          return Errors.badRequest(res, "AWS SES needs both the access key ID (apiKey, or settings.accessKeyId) and settings.secretAccessKey. Save the full credential here or via the BYOK hub (channel 'ses').");
+        }
+        const { setByokCredential } = await import('./services/byok/key-vault');
+        await setByokCredential({ organizationId: org.id, channel: 'ses', plaintext });
         integration = { isEnabled: true };
       } else {
         integration = await storage.upsertOrganizationIntegration({
