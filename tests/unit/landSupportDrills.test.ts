@@ -16,9 +16,11 @@
 //   3  quoted figure: a parcel passport at 3 of 17 fields, with sources.
 //   4  wrong data: flood and soil on a parcel nobody has looked up yet.
 //   5  fences: the DEFECT-0101 1099-INT gate on note interest.
-// A final block pins LD-DEF-1: none of the six land tools is in the
-// support resolver's tool list, so the live resolver legs of scenarios
-// 1–4 stay UNPROVEN in the record.
+// A final block pins the LD-DEF-1 cure: the five land READS have
+// support-only variants in the resolver's tool list (the write has
+// none), so the live resolver legs of scenarios 1–4 are executable —
+// the real-switch legs live in that block and the resolver-gate legs
+// in landSupportDrillsResolver.test.ts.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -127,6 +129,9 @@ vi.mock("../../server/services/founder", () => ({
 }));
 
 import { executeTool } from "../../server/ai/tools";
+import { executeSupportTool, PAUSE_SAFE_SUPPORT_TOOLS, supportToolDefinitions } from "../../server/ai/supportAgent";
+import { groupForTool } from "@shared/pax-controls";
+import { CAPABILITY_ROWS } from "@shared/pax-capabilities";
 import {
   computePayoffQuote,
   insertPaymentIdempotentCents,
@@ -344,8 +349,8 @@ describe("scenario 4 — unlooked-up fields stay gaps; recorded values pass thro
   });
 });
 
-// LD-DEF-1 — the support resolver cannot see any land tool.
-describe("capability pin — land tools are on the chat path, absent from the resolver subset (LD-DEF-1)", () => {
+// LD-DEF-1 — cured: the five land reads have support variants; the write has none.
+describe("capability pin, cured — the resolver subset is the prior set + exactly the five support land reads (LD-DEF-1, composed with the four support tax reads and the four support buy-hold reads)", () => {
   const root = resolve(__dirname, "../..");
   const read = (p: string) => stripComments(readFileSync(resolve(root, p), "utf8"));
   const LAND_TOOLS = [
@@ -356,17 +361,161 @@ describe("capability pin — land tools are on the chat path, absent from the re
     "get_land_payoff_quote",
     "mark_land_listing_listed",
   ];
+  const SUPPORT_LAND_READS = [
+    "get_parcel_passport_view",
+    "get_land_listings_view",
+    "get_land_listing_view",
+    "get_listing_paste_text_view",
+    "get_land_payoff_quote_view",
+  ] as const;
+  const SUPPORT_TAX_READS = [
+    "get_tax_certificates_book",
+    "get_tax_certificate_record",
+    "get_tax_certificate_clock_view",
+    "get_tax_certificate_ledger_view",
+  ] as const;
+  const SUPPORT_BH_READS = [
+    "get_rent_roll_view",
+    "get_rental_leases_view",
+    "get_lease_ledger_view",
+    "get_rental_underwriting_view",
+  ] as const;
+  const PRIOR_RESOLVER_NAMES = [
+    "search_knowledge_base",
+    "search_resolved_tickets",
+    "get_similar_resolutions",
+    "get_troubleshooting_steps",
+    "diagnose_account",
+    "check_data_integrity",
+    "get_account_summary",
+    "query_user_data",
+    "get_user_activity",
+    "estimate_resolution_confidence",
+    "recall_user_memory",
+    "draft_customer_response",
+    "escalate_to_human",
+  ];
+  // The support resolver's subset is not exported (an export with no
+  // production consumer fails the reachability ratchet); pin it from
+  // source, the #764/#742 pattern.
+  const RESOLVER_TOOL_NAMES: string[] = (() => {
+    const src = readFileSync(resolve(root, "server/ai/paxSupportResolver.ts"), "utf8");
+    const m = /const RESOLVER_TOOL_NAMES = \[([\s\S]*?)\] as const;/.exec(src);
+    if (!m) throw new Error("RESOLVER_TOOL_NAMES literal not found in paxSupportResolver.ts");
+    return [...m[1].matchAll(/"([a-z_0-9]+)"/g)].map((x) => x[1]);
+  })();
 
   it("the chat registry names all six (PR #744)", () => {
     const toolsSrc = read("server/ai/tools.ts");
     for (const t of LAND_TOOLS) expect(toolsSrc, `chat path is missing ${t}`).toContain(t);
   });
 
-  it("the resolver subset names none of the six", () => {
+  it("the resolver subset is exactly the prior 13 + the five support land reads + the four support tax reads + the four support buy-hold reads, in order", () => {
+    expect(RESOLVER_TOOL_NAMES).toEqual([
+      ...PRIOR_RESOLVER_NAMES.slice(0, 7),
+      ...SUPPORT_LAND_READS,
+      ...SUPPORT_TAX_READS,
+      ...SUPPORT_BH_READS,
+      ...PRIOR_RESOLVER_NAMES.slice(7),
+    ]);
+  });
+
+  it("no chat land name entered the subset — the support path dispatches its own names", () => {
+    for (const t of LAND_TOOLS) expect(RESOLVER_TOOL_NAMES).not.toContain(t);
+  });
+
+  it("every subset name resolves to a real support tool definition (the resolver builds its tool list from these)", () => {
+    for (const n of RESOLVER_TOOL_NAMES) expect(supportToolDefinitions, n).toHaveProperty(n);
+  });
+
+  it("the five reads are registered everywhere the pattern registers a support tool", () => {
+    for (const n of SUPPORT_LAND_READS) {
+      expect(supportToolDefinitions[n], n).toBeDefined();
+      expect(PAUSE_SAFE_SUPPORT_TOOLS.has(n), n).toBe(true);
+      expect(groupForTool(n), n).toBe("looks_and_drafts");
+      expect(CAPABILITY_ROWS[n], n).toMatchObject({ dispatch: "executeSupportTool", group: "looks_and_drafts", family: "land_flipper", pauseSafe: true });
+    }
+  });
+
+  it("there is NO support variant of the write — marking listed stays on the chat path", () => {
+    const supportNames = Object.keys(supportToolDefinitions);
+    expect(supportNames).not.toContain("mark_land_listing_listed");
+    expect(supportNames.some((n) => n.includes("mark") && n.includes("listed"))).toBe(false);
+    expect(PAUSE_SAFE_SUPPORT_TOOLS.has("mark_land_listing_listed")).toBe(false);
+    expect(CAPABILITY_ROWS["mark_land_listing_listed"]).toMatchObject({ dispatch: "executeTool", pauseSafe: false });
     const resolverSrc = read("server/ai/paxSupportResolver.ts");
-    const block = resolverSrc.match(/RESOLVER_TOOL_NAMES\s*=\s*\[([\s\S]*?)\]/);
-    expect(block, "RESOLVER_TOOL_NAMES block not found — re-point this pin, do not delete it").not.toBeNull();
-    for (const t of LAND_TOOLS) expect(block![1], `resolver unexpectedly gained ${t} — close LD-DEF-1 and re-drill`).not.toContain(t);
+    expect(resolverSrc).toMatch(/Never promise to mark a\s+listing as listed/);
+  });
+});
+
+// The real support switch: the five reads run through executeSupportTool
+// against the same seeded rows as scenarios 1–4 (the db seam above is the
+// only stub — the switch and the shared #744 helpers run for real).
+describe("the real support switch — the five land reads ground scenarios 1–4", () => {
+  it("scenario 1 leg: the payoff read returns the engine's figures, marked indicative, and records nothing", async () => {
+    SEAM.rows.notes = [noteRow];
+    const r = await executeSupportTool("get_land_payoff_quote_view", { note_id: 5, payoff_date: "2026-11-24" }, ORG);
+    expect(r.success).toBe(true);
+    expect(r.data.totalPayoffCents).toBe(5_353_644);
+    expect(r.data.accruedInterestCents).toBe(43_644);
+    expect(r.data.recorded).toBe(false);
+    expect(r.data.coverage).toMatch(/INDICATIVE/);
+    expect(SEAM.updates).toHaveLength(0);
+  });
+
+  it("scenario 2 leg: the listing read keeps listed and active distinct, and the paste-text read sends nothing", async () => {
+    SEAM.rows.property_listings = [{ ...listingRow, status: "listed", publishedAt: new Date("2026-11-01") }];
+    const one = await executeSupportTool("get_land_listing_view", { listing_id: 9 }, ORG);
+    expect(one.success).toBe(true);
+    expect(one.data.listing.status).toBe("listed");
+    expect(one.data.coverage).toMatch(/"listed" is the operator's own word/);
+    expect(one.data.coverage).toMatch(/"active" means a channel accepted/);
+    SEAM.rows.property_listings = [listingRow];
+    SEAM.rows.properties = [parcelRow];
+    SEAM.rows.organizations = [{ id: 7, name: "Org" }];
+    const paste = await executeSupportTool("get_listing_paste_text_view", { listing_id: 9 }, ORG);
+    expect(paste.success).toBe(true);
+    expect(paste.data.pasteText).toBe("PASTE TEXT FOR CRAIGSLIST");
+    expect(paste.data.coverage).toMatch(/has NOT posted anything/);
+    expect(SEAM.updates).toHaveLength(0);
+    expect(SEAM.effects).toHaveLength(0);
+  });
+
+  it("scenario 2 leg: the listings read lists the account's own listings with their statuses", async () => {
+    SEAM.rows.property_listings = [listingRow];
+    const r = await executeSupportTool("get_land_listings_view", {}, ORG);
+    expect(r.success).toBe(true);
+    expect(r.data.listings).toHaveLength(1);
+    expect(r.data.listings[0]).toMatchObject({ id: 9, status: "draft" });
+    expect(r.data.coverage).toMatch(/this account's own land listings only/);
+  });
+
+  it("scenario 3 leg: the passport read shows 3 of 17 with sources, the rest named gaps", async () => {
+    SEAM.rows.properties = [parcelRow];
+    const r = await executeSupportTool("get_parcel_passport_view", { property_id: 42 }, ORG);
+    expect(r.success).toBe(true);
+    expect(r.data.fieldsPopulated).toBe(3);
+    expect(r.data.fieldsTotal).toBe(17);
+    expect(r.data.fields.floodZone).toMatchObject({ value: "Zone X", source: "FEMA NFHL", asOf: "2024-01-01" });
+    expect(r.data.gaps).toHaveLength(14);
+  });
+
+  it("scenario 4 leg: a parcel with no recorded lookup reads 0 of 17 — no flood zone or soil class appears", async () => {
+    SEAM.rows.properties = [{ ...parcelRow, enrichmentData: null }];
+    const r = await executeSupportTool("get_parcel_passport_view", { property_id: 42 }, ORG);
+    expect(r.success).toBe(true);
+    expect(r.data.fieldsPopulated).toBe(0);
+    expect(r.data.fields.floodZone).toBeUndefined();
+    expect(r.data.fields.soilCapabilityClass).toBeUndefined();
+    expect(r.data.gaps).toHaveLength(17);
+    expect(r.data.gaps.every((g: any) => g.reason === "not_looked_up")).toBe(true);
+  });
+
+  it("an unknown listing is refused in plain words on the support path too — no invented listing", async () => {
+    SEAM.rows.property_listings = [];
+    const r = await executeSupportTool("get_land_listing_view", { listing_id: 9 }, ORG);
+    expect(r.success).toBe(false);
+    expect(r.refusal?.what).toMatch(/No listing with that number is in this account/);
   });
 });
 
