@@ -49,8 +49,8 @@ function rentalNextStep({ kind, propertyId }: { kind: DecisionKind; propertyId: 
   );
 }
 
-function describeChoice(kind: DecisionKind, inputs: Record<string, number>, metrics: ScenarioMetric[]): string {
-  const price = usd(inputs.purchasePriceCents);
+function describeChoice(kind: DecisionKind, inputs: Record<string, number | string>, metrics: ScenarioMetric[]): string {
+  const price = usd(inputs.purchasePriceCents as number | undefined);
   const coc = metrics.find((m) => m.id === "cash_on_cash")?.value;
   const cocText = coc === null || coc === undefined ? "" : ` (${(coc * 100).toFixed(1)}% cash-on-cash)`;
   if (kind === "pass") return `Pass at ${price}`;

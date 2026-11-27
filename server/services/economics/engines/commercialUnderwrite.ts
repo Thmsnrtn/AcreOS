@@ -99,6 +99,7 @@ export const commercialUnderwriteEngine: EngineSpec = {
     "cap_rate",
     "operating_expense_ratio",
     "rollover_rent_share_12m",
+    "total_cost",
   ],
 
   compute(inputs) {
@@ -211,6 +212,25 @@ export const commercialUnderwriteEngine: EngineSpec = {
         "and no market or comp figure was used anywhere in this scenario.",
     });
 
+    // ── What `total_cost` actually IS ────────────────────────────────────
+    // The acquisition cost, on the multifamilyNoi v2 pattern: the gradeable
+    // predicate (tests/support/verticalEvidence.ts) credits an engine only
+    // if it produces `total_cost` or `profit`, and the outcome loop reads
+    // `total_cost` as "what it cost to acquire" — the one predicted figure
+    // here with a real-world actual to compare against at review time.
+    // The price is a required input (the underwrite refuses without one),
+    // so the metric is always present; the form supplies no closing costs,
+    // so none is added or assumed.
+    assumptions.push({
+      key: "total_cost_basis",
+      value: "acquisition",
+      origin: "derived",
+      basis:
+        "Total cost is the ACQUISITION cost: the price the operator " +
+        "entered for this acquisition. The underwrite form supplies no " +
+        "closing costs, so none is added. It is not a market valuation.",
+    });
+
     if (escalatedMonthlyRentCents !== baseMonthlyRentCents) {
       assumptions.push({
         key: "rent_escalation",
@@ -320,6 +340,7 @@ export const commercialUnderwriteEngine: EngineSpec = {
           ? null
           : expiringMonthlyRentCents / escalatedMonthlyRentCents,
       ),
+      metric("total_cost", purchasePriceCents),
     ];
 
     return {

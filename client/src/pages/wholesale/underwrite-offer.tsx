@@ -31,9 +31,9 @@ function usd(cents: number | null | undefined): string {
   return `${cents < 0 ? "−" : ""}$${Math.abs(Math.round(cents / 100)).toLocaleString("en-US")}`;
 }
 
-function describeChoice(kind: DecisionKind, inputs: Record<string, number>, metrics: ScenarioMetric[]): string {
+function describeChoice(kind: DecisionKind, inputs: Record<string, number | string>, metrics: ScenarioMetric[]): string {
   const offer = metrics.find((m) => m.id === "max_allowable_offer")?.value;
-  const fee = usd(inputs.targetFeeCents);
+  const fee = usd(inputs.targetFeeCents as number | null | undefined);
   if (kind === "pass") return `Pass — the most I could offer and still assign at ${fee} is ${usd(offer)}`;
   return `Offer up to ${usd(offer)} to assign at a ${fee} fee`;
 }

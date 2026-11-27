@@ -25,7 +25,7 @@ function usd(cents: number | null | undefined): string {
   return `${cents < 0 ? "−" : ""}$${Math.abs(Math.round(cents / 100)).toLocaleString("en-US")}`;
 }
 
-function describeChoice(kind: DecisionKind, inputs: Record<string, number>, metrics: ScenarioMetric[]): string {
+function describeChoice(kind: DecisionKind, inputs: Record<string, number | string>, metrics: ScenarioMetric[]): string {
   const price = metrics.find((m) => m.id === "max_allowable_offer")?.value;
   const yieldText = inputs.targetYieldPct === undefined ? "" : ` at a ${inputs.targetYieldPct}% yield`;
   if (kind === "pass") return `Pass — at my target yield this note is worth ${usd(price)}`;

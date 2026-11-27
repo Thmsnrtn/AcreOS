@@ -122,6 +122,7 @@ const NotesPipelinePage = React.lazy(() => import("@/pages/notes-pipeline"));
 const NoteAcquisitionDetailPage = React.lazy(() => import("@/pages/note-acquisition-detail"));
 const UnderwriteNotePage = React.lazy(() => import("@/pages/notes/underwrite-note"));
 const TaxBidDeskPage = React.lazy(() => import("@/pages/tax/bid-desk"));
+const CommercialUnderwritePage = React.lazy(() => import("@/pages/commercial/underwrite"));
 // Tax-Delinquent vertical TD-2 — redemption clock.
 const RedemptionClockPage = React.lazy(() => import("@/pages/redemption-clock"));
 // Tax-Delinquent vertical TD-3 — state rules database.
@@ -1142,6 +1143,9 @@ function Router() {
       </Route>
       <Route path="/tax/bid-desk">
         {() => <ProtectedRoute component={TaxBidDeskPage} />}
+      </Route>
+      <Route path="/commercial/underwrite">
+        {() => <ProtectedRoute component={CommercialUnderwritePage} />}
       </Route>
       <Route path="/bookkeeping">
         {() => <ProtectedRoute component={BookkeepingPage} />}

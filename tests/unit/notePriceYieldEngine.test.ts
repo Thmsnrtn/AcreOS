@@ -39,7 +39,11 @@ const zeroRate = {
 
 const body = (inputs: Record<string, number>) =>
   computeScenario({ subjectType: "property", subjectId: 1, label: "t", engineId: "note_price_yield", inputs }, ALL_ENGINES);
-const metric = (inputs: Record<string, number>, id: string) => body(inputs).metrics.find((m) => m.id === id)?.value;
+// wireInputs now carries month-unit fields as strings (the commercial
+// desk's `month` unit); this engine's fields are all numeric, and the
+// wire tests assert the wired inputs deep-equal the numeric fixture
+// before calling metric — so the narrow here is proven, not assumed.
+const metric = (inputs: Record<string, number | string>, id: string) => body(inputs as Record<string, number>).metrics.find((m) => m.id === id)?.value;
 
 describe("the arithmetic", () => {
   it("prices the zero-rate note to the exact cent (hand-computed PV)", () => {

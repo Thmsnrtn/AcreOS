@@ -239,7 +239,12 @@ export const CAPABILITIES: readonly Capability[] = [
   verticalEntry("residential_wholesaler", "residential wholesaler", "decided"),
   verticalEntry("buy_and_hold", "buy and hold", "decided"),
   verticalEntry("short_term_rental", "short term rental", "surfaced"),
-  verticalEntry("commercial", "commercial", "surfaced"),
+  // commercial flipped surfaced → decided 2026-11-25 in the commercial
+  // desk lift: POST /api/commercial/underwrite records acquire/hold/pass
+  // decisions under the commercial pack citing commercial_underwrite
+  // scenarios, and the engine now produces an acquisition `total_cost`
+  // (the multifamilyNoi v2 pattern), so its decisions are gradeable.
+  verticalEntry("commercial", "commercial", "decided"),
   verticalEntry("creative_finance", "creative finance", "surfaced"),
   // developer flipped surfaced → decided 2026-11-24 in the developer desk
   // lift: the shared subdivision decision desk records decisions under the

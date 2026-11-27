@@ -102,7 +102,7 @@ export interface UnderwritingWorkbenchProps {
   /** Metric ids to feature first, in order. */
   headlineMetrics: readonly string[];
   /** The default "what was chosen" sentence, editable before recording. */
-  describeChoice: (kind: DecisionKind, inputs: Record<string, number>, metrics: ScenarioMetric[]) => string;
+  describeChoice: (kind: DecisionKind, inputs: Record<string, number | string>, metrics: ScenarioMetric[]) => string;
   /** Optional: a property to start on (e.g. from a deep link). */
   initialPropertyId?: number | null;
   /**

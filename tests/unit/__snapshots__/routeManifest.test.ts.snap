@@ -57,6 +57,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-cohort-ltv.ts",
   "routes-cohort-retention.ts",
   "routes-comments.ts",
+  "routes-commercial-underwriting.ts",
   "routes-communications.ts",
   "routes-compliance.ts",
   "routes-connections.ts",
