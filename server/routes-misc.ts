@@ -28,6 +28,14 @@ import {
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 
+/**
+ * P9-2d (coordinator ruling, Option A): the single-key settings routes
+ * cannot form the twilio vault tuple, so a twilio save there is rejected
+ * with this pointer to the surfaces that take the full credential.
+ */
+const TWILIO_FULL_CREDENTIAL_POINTER =
+  "Twilio needs the full credential (account SID, auth token, phone number) — save via SMS settings (POST /api/sms/config) or the BYOK hub.";
+
 const smsSendSchema = z.object({
   to: z.string().trim().min(7, "Phone number is required"),
   message: z.string().min(1, "Message is required"),
@@ -448,14 +456,29 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
           // no legacy row); other services keep the legacy read.
           // P9-2b: lob status resolves vault-first the same way.
           // P9-2c: sendgrid status resolves vault-first the same way.
+          // P9-2d: twilio status resolves vault-first the same way — its
+          // legacy field is authToken and its vault value IS the tuple
+          // "<accountSid>:<authToken>:<phoneNumber>", so the masked key
+          // is the token parsed out of the tuple (the resolver's legacy
+          // fallback already returns the bare authToken).
           let apiKey = creds?.apiKey;
-          if (service === "regrid" || service === "lob" || service === "sendgrid") {
+          if (service === "regrid" || service === "lob" || service === "sendgrid" || service === "twilio") {
             const { resolveProviderCredential } = await import("./services/providers/resolveProviderCredential");
-            apiKey = (await resolveProviderCredential(org.id, {
-              channel: service === "lob" ? "lob" : service === "sendgrid" ? "sendgrid" : "regrid",
+            const resolved = await resolveProviderCredential(org.id, {
+              channel: service === "lob" ? "lob" : service === "sendgrid" ? "sendgrid" : service === "twilio" ? "twilio" : "regrid",
               legacyProvider: service,
-              legacyField: "apiKey",
-            })) ?? undefined;
+              legacyField: service === "twilio" ? "authToken" : "apiKey",
+            });
+            if (service === "twilio") {
+              if (resolved) {
+                const parts = resolved.split(":");
+                apiKey = parts.length === 3 && parts.every(Boolean) ? parts[1] : resolved;
+              } else {
+                apiKey = undefined;
+              }
+            } else {
+              apiKey = resolved ?? undefined;
+            }
           }
           return {
             provider: service,
@@ -481,6 +504,8 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const { service, apiKey } = req.body;
+
+      if (service === "twilio") return Errors.badRequest(res, TWILIO_FULL_CREDENTIAL_POINTER);
 
       if (!service || !apiKey) {
         return Errors.badRequest(res, "Service and API key are required");
@@ -998,8 +1023,8 @@ export async function registerTwilioWebhookRoutes(app: Express): Promise<void> {
       logger.info(`[Twilio Webhook] Incoming SMS from ${From} to ${To}: ${Body.substring(0, 50)}...`);
 
       // The org is the one verifyInboundTwilioSms resolved from the `To`
-      // number across EVERY place a number can be configured (integration
-      // row, BYOK vault, purchased numbers, tracking pool) and whose own token
+      // number across EVERY place a number can be configured (BYOK vault,
+      // purchased numbers, tracking pool) and whose own token
       // — or the platform's — verified the signature. It is never re-derived
       // here: a second, narrower lookup is how BYO numbers went unmatched.
       const verified = res.locals.twilioInbound as VerifiedTwilioInbound | undefined;

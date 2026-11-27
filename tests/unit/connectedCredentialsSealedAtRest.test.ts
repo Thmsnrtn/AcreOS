@@ -8,8 +8,10 @@
  * smsService.saveTwilioCredentials (POST /api/settings/twilio) wrote the
  * Twilio auth token into organization_integrations.credentials in the clear.
  *
- * Behavioural: the Twilio save writes an envelope with no plaintext token,
- * and the two readers (configuration check, the Twilio adapter) read it back.
+ * Behavioural: the Twilio save seals (the 2026-10-10 fix), and since
+ * P9-2d it persists the verified tuple in the canonical byok vault via
+ * setByokCredential instead — no credential is written to the legacy row
+ * at all — and the configuration check reads the vault tuple back.
  * Population: every write of organization_integrations.credentials in
  * server/ is a sealIntegrationCredentials(...) call or a named, non-secret
  * config writer.
@@ -24,6 +26,18 @@ import ts from "typescript";
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const H = vi.hoisted(() => ({ writes: [] as any[], row: null as any }));
+const VAULT = vi.hoisted(() => ({ store: new Map<string, string>() }));
+vi.mock("../../server/services/byok/key-vault", () => ({
+  setByokCredential: vi.fn(async ({ organizationId, channel, plaintext }: any) => {
+    VAULT.store.set(`${organizationId}:${channel}`, plaintext);
+    return { channel, fingerprint: plaintext.slice(-4), createdAt: null, lastUsedAt: null, revokedAt: null };
+  }),
+  getByokCredential: vi.fn(async ({ organizationId, channel }: any) =>
+    VAULT.store.get(`${organizationId}:${channel}`) ?? null,
+  ),
+  revokeByokCredential: vi.fn(async () => true),
+  listByokCredentials: vi.fn(async () => []),
+}));
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../../server/db", () => {
   const c: any = { from: () => c, where: () => c, limit: async () => (H.row ? [H.row] : []) };
@@ -36,22 +50,31 @@ vi.mock("../../server/db", () => {
   };
 });
 
-describe("the Twilio save seals; its readers unseal", () => {
-  it("no plaintext token at rest, and the configuration check still reads it", async () => {
+describe("the Twilio save vaults the tuple (P9-2d); its readers read the vault", () => {
+  it("no credential on the legacy row, the tuple in the vault, and the configuration check still reads it", async () => {
     process.env.ENCRYPTION_KEY ||= "0".repeat(64);
     process.env.FIELD_ENCRYPTION_KEY ||= "0".repeat(64);
+    VAULT.store.clear();
+    H.row = null;
+    H.writes.length = 0;
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async () => ({ ok: true, json: async () => ({}) })) as any;
     try {
       const sms = await import("../../server/services/smsService");
       const token = "a".repeat(32);
-      const r = await sms.saveTwilioCredentials(7, "AC" + "1".repeat(32), token, "+15125550100");
+      const sid = "AC" + "1".repeat(32);
+      const r = await sms.saveTwilioCredentials(7, sid, token, "+15125550100");
       expect(r.success).toBe(true);
-      const written = JSON.stringify(H.writes.at(-1).credentials);
-      expect(written).not.toContain(token);
-      expect(Object.keys(H.writes.at(-1).credentials)).toEqual(["encrypted"]);
-      const { readIntegrationCredentials } = await import("../../server/services/integrationCredentials");
-      expect(readIntegrationCredentials(H.row, 7)).toEqual(expect.objectContaining({ authToken: token }));
+      // The credential persists ONLY as the vault tuple.
+      expect(VAULT.store.get("7:twilio")).toBe(`${sid}:${token}:+15125550100`);
+      // The legacy row write (non-credential state only) carries no
+      // credentials field and no plaintext token anywhere.
+      expect(H.writes.length).toBeGreaterThan(0);
+      expect(H.writes.at(-1).credentials).toBeUndefined();
+      expect(JSON.stringify(H.writes)).not.toContain(token);
+      // The configuration check reads the vault tuple back (P9-2d flip).
+      const check = await sms.checkTwilioConfiguration(7);
+      expect(check).toEqual({ configured: true, phoneNumber: "+15125550100" });
     } finally {
       globalThis.fetch = realFetch;
     }
