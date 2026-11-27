@@ -157,12 +157,13 @@ describe("twilio write freeze + reader flip (source population)", () => {
 
   it("POST /api/settings/save-api-key REJECTS a twilio save with the pointer to the tuple surfaces", () => {
     const src = read("server/routes-misc.ts");
-    const at = src.indexOf("P9-2d (ruling, Option A)");
+    expect(src).toContain('if (service === "twilio") return Errors.badRequest(res, TWILIO_FULL_CREDENTIAL_POINTER);');
+    const at = src.indexOf("const TWILIO_FULL_CREDENTIAL_POINTER");
     expect(at).toBeGreaterThan(-1);
-    const segment = src.slice(at, at + 800);
-    expect(segment).toContain('service === "twilio"');
-    expect(segment).toContain("Errors.badRequest");
-    expect(segment).toContain("/api/sms/config");
+    const pointer = src.slice(at, at + 400);
+    expect(pointer).toContain("account SID, auth token, phone number");
+    expect(pointer).toContain("/api/sms/config");
+    expect(pointer).toContain("BYOK hub");
   });
 
   it("saveTwilioCredentials vaults the verified tuple via setByokCredential and never seals into the legacy bag", () => {

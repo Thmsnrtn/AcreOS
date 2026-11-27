@@ -28,6 +28,14 @@ import {
 import { clock } from "./utils/clock";
 import { routeParam } from "./utils/routeParams";
 
+/**
+ * P9-2d (coordinator ruling, Option A): the single-key settings routes
+ * cannot form the twilio vault tuple, so a twilio save there is rejected
+ * with this pointer to the surfaces that take the full credential.
+ */
+const TWILIO_FULL_CREDENTIAL_POINTER =
+  "Twilio needs the full credential (account SID, auth token, phone number) — save via SMS settings (POST /api/sms/config) or the BYOK hub.";
+
 const smsSendSchema = z.object({
   to: z.string().trim().min(7, "Phone number is required"),
   message: z.string().min(1, "Message is required"),
@@ -497,9 +505,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       const org = req.organization;
       const { service, apiKey } = req.body;
 
-      // P9-2d (ruling, Option A): twilio is REJECTED here — a single
-      // string cannot form the vault tuple every send path requires.
-      if (service === "twilio") return Errors.badRequest(res, "Twilio needs the full credential (account SID, auth token, phone number) — save via SMS settings (POST /api/sms/config) or the BYOK hub.");
+      if (service === "twilio") return Errors.badRequest(res, TWILIO_FULL_CREDENTIAL_POINTER);
 
       if (!service || !apiKey) {
         return Errors.badRequest(res, "Service and API key are required");
