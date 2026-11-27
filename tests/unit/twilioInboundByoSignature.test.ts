@@ -270,7 +270,13 @@ describe("inbound SMS to a platform number still works", () => {
     expect(H.leads.find((l) => l.id === 70)!.doNotContact).toBe(false);
   });
 
-  it("a platform-signed STOP to a legacy integration number resolves that org", async () => {
+  it("a platform-signed STOP to a legacy-only integration number no longer resolves that org (P9-2d)", async () => {
+    // P9-2d removed the legacy organization_integrations leg (a) from
+    // owner resolution: the vault is the single twilio credential
+    // authority, and legacy-only orgs are migrated by the Stage-2
+    // backfill. A number claimed ONLY by a legacy row therefore
+    // resolves no owner — the platform signature still verifies, but
+    // with organizationId null nothing is processed into any org.
     H.integrations.push({
       organizationId: 4,
       provider: "twilio",
@@ -281,7 +287,8 @@ describe("inbound SMS to a platform number still works", () => {
     const params = stopTo("+15055550111", "SM_legacy");
     const res = await post(params, sign(PLATFORM_TOKEN, params));
     expect(res.status).toBe(200);
-    expect(H.leads.find((l) => l.id === 40)!.doNotContact).toBe(true);
+    expect(H.leads.find((l) => l.id === 40)!.doNotContact).toBe(false);
+    expect(H.handleIncoming).toEqual([]);
   });
 });
 

@@ -272,6 +272,21 @@ export default async function globalSetup() {
                '{"fromPhoneNumber": "+15005550006", "accountSid": "ACe2e00000000000000000000000000000"}'::jsonb)`,
       [orgId],
     );
+    // P9-2d: inbound owner resolution no longer reads the legacy
+    // integrations row (the byok vault is the single twilio credential
+    // authority). This fixture number is platform-signed (the wedge
+    // journey signs with the platform TWILIO_AUTH_TOKEN), so its owner
+    // binding is seeded the way a platform-rented number is bound in
+    // production: a provisioned_phone_numbers row (owner leg (c)).
+    await client.query(
+      `DELETE FROM provisioned_phone_numbers WHERE organization_id = $1 AND phone_number = '+15005550006'`,
+      [orgId],
+    );
+    await client.query(
+      `INSERT INTO provisioned_phone_numbers (organization_id, phone_number, twilio_sid, friendly_name, status)
+       VALUES ($1, '+15005550006', 'PNe2e00000000000000000000000000000', 'E2E wedge number', 'active')`,
+      [orgId],
+    );
 
     const { rows: propRows } = await client.query(
       `INSERT INTO properties (organization_id, apn, county, state, size_acres, status, city, address)
