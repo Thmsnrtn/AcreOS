@@ -274,7 +274,7 @@ vi.mock("../../server/services/leadScoring", () => ({
 // PII, never charge. The routes-skip-tracing endpoints call trace() directly;
 // tests that exercise their success path set H.traceState.impl to a hit.
 vi.mock("../../server/services/skipTracingService", () => ({
-  skipTracingService: { trace: H.traceMock, isConfigured: () => H.traceState.configured },
+  skipTracingService: { trace: H.traceMock, isConfigured: () => H.traceState.configured, isConfiguredForOrg: async () => H.traceState.configured },
 }));
 vi.mock("../../server/middleware/rateLimit", () => ({
   createRateLimiter: () => (_req: any, _res: any, next: any) => next(),
