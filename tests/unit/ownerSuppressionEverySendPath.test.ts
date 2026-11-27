@@ -51,9 +51,8 @@ const REGISTER: Record<string, Member[]> = {
   ],
   // ── Physical mail: every Lob client and PostGrid.
   "server/services/directMail.ts": [{ channel: "mail", count: 2 }],
-  "server/services/directMailService.ts": [{ channel: "mail", count: 2 }],
+  "server/services/directMailService.ts": [{ channel: "mail", count: 3 }],
   "server/services/lobService.ts": [{ channel: "mail", count: 2 }],
-  "server/services/mailProvider.ts": [{ channel: "mail", count: 2 }],
   "server/services/mail/providers/postgrid.ts": [{ channel: "mail", count: 2 }],
   // ── Skip-trace vendors.
   "server/services/skipTracingService.ts": [{ channel: "skip_trace", count: 2 }],

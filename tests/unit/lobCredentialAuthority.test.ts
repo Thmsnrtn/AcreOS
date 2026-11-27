@@ -33,6 +33,17 @@
  * mail/mailLane.ts grants only under the org's verified sender identity and
  * charges in credits). The order pinned here is therefore
  * vault → legacy row → house lane.
+ *
+ * UPDATED K7-2a (2026-11-26): mailProvider's send paths are RETIRED — the
+ * autopilot send_letter hand now calls directMailService directly (org
+ * sends) and its narrow org-less sendSystemLetter (system sends). The
+ * behavioural pins below therefore run through directMailService's own
+ * surface — the authority itself, no adapter in between — and the source
+ * scan now pins that mailProvider carries NO send path at all (its
+ * remaining surface is getProviderInfo / the MailProvider enum). The
+ * canonical operation THROWS on failure where mailProvider returned
+ * {success:false}; the hand maps the throw back to its result contract
+ * (autopilotSendLetterHand.test.ts pins that mapping).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -147,15 +158,56 @@ vi.mock("../../server/services/credits", () => ({
   },
 }));
 
-import { sendLetter, sendPostcard } from "../../server/services/mailProvider";
+vi.mock("../../server/utils/simulationMode", () => ({
+  shouldSimulate: () => false,
+  recordSimulatedAction: async () => ({ id: "sim" }),
+}));
+vi.mock("../../server/services/byok/toggle", () => ({ isByokEnabled: async () => state.byokKey !== null }));
+vi.mock("../../server/services/financial-ledger", () => ({ postOpexSpent: async () => undefined }));
+
+import { sendLetter, sendPostcard, sendSystemLetter } from "../../server/services/directMailService";
 import { stripComments } from "../helpers/stripComments";
 
 const TO = { name: "Lee Owner", addressLine1: "2 Dirt Rd", city: "Llano", state: "TX", zip: "78643" };
 const FROM = { name: "Test Land Co", addressLine1: "1 Main St", city: "Austin", state: "TX", zip: "78701" };
 // A house letter must be CONFIRMED one page (founder decision 2026-10-18):
 // a one-page PDF on an https URL, served by the safeFetch stand-in.
-const LETTER = { to: TO, from: FROM, file: "https://files.example.com/letter.pdf" };
-const POSTCARD = { to: TO, from: FROM, front: "<h1>front</h1>", back: "<h1>back</h1>" };
+const LETTER_FILE = "https://files.example.com/letter.pdf";
+const RECIPIENT = { line1: TO.addressLine1, city: TO.city, state: TO.state, zip: TO.zip };
+
+/** An org letter through the canonical operation, as the send_letter hand sends it. */
+function orgLetter() {
+  return sendLetter({
+    organizationId: 42,
+    senderIdentity: state.identity as never,
+    recipientName: TO.name,
+    recipientAddress: RECIPIENT,
+    htmlContent: LETTER_FILE,
+  });
+}
+
+/** An org postcard through the canonical operation. */
+function orgPostcard() {
+  return sendPostcard({
+    organizationId: 42,
+    senderIdentity: state.identity as never,
+    recipientName: TO.name,
+    recipientAddress: RECIPIENT,
+    frontHtml: "<h1>front</h1>",
+    backHtml: "<h1>back</h1>",
+  });
+}
+
+/** An org-less system letter — the retired mailProvider org-less path, preserved. */
+function systemLetter() {
+  return sendSystemLetter({
+    recipientName: TO.name,
+    recipientAddress: RECIPIENT,
+    senderName: FROM.name,
+    senderAddress: { line1: FROM.addressLine1, city: FROM.city, state: FROM.state, zip: FROM.zip },
+    htmlContent: LETTER_FILE,
+  });
+}
 
 beforeEach(() => {
   fakeSafeFetch.reset();
@@ -172,18 +224,18 @@ beforeEach(() => {
   delete process.env.LOB_API_KEY;
 });
 
-describe("mailProvider resolves Lob credentials through the single authority, vault-first", () => {
+describe("the canonical operation resolves Lob credentials through the single authority, vault-first", () => {
   it("BYOK vault wins over BOTH the legacy row and the platform key — the org's own account pays", async () => {
     state.byokKey = "live_vault_key";
     state.legacyRow = { isEnabled: true, credentials: { apiKey: "test_row_key" } };
 
-    const result = await sendLetter({ ...LETTER, organizationId: 42 });
+    const result = await orgLetter();
 
-    expect(result.success).toBe(true);
+    expect(result.lobId).toBe("ltr_1");
     expect(state.lobCreateCalls[0].apiKey).toBe("live_vault_key");
     // A live customer key is honestly live — the interlock governs only the
     // platform key, never an org's own.
-    expect(result.isTestMode).toBe(false);
+    expect(result.testMode).toBe(false);
     // Vault answered; the later tiers must not even be consulted.
     expect(state.probes.length).toBeGreaterThan(0);
     expect(state.probes.every((p) => p === "byok-vault")).toBe(true);
@@ -193,11 +245,11 @@ describe("mailProvider resolves Lob credentials through the single authority, va
   it("legacy organization_integrations row is SECOND — used only when the vault is empty", async () => {
     state.legacyRow = { isEnabled: true, credentials: { apiKey: "test_row_key" } };
 
-    const result = await sendLetter({ ...LETTER, organizationId: 42 });
+    const result = await orgLetter();
 
-    expect(result.success).toBe(true);
+    expect(result.lobId).toBe("ltr_1");
     expect(state.lobCreateCalls[0].apiKey).toBe("test_row_key");
-    expect(result.isTestMode).toBe(true);
+    expect(result.testMode).toBe(true);
     expect(state.probes).not.toContain("platform");
     expect(state.probes.slice(0, 2)).toEqual(["byok-vault", "legacy-row"]);
     expect(state.poolDebits).toEqual([]);
@@ -207,11 +259,11 @@ describe("mailProvider resolves Lob credentials through the single authority, va
     // House mail runs only on AcreOS's LIVE account with the interlock armed.
     state.armed = true;
     state.platformKey = { apiKey: "live_platform_key", isTestKey: false };
-    const result = await sendLetter({ ...LETTER, organizationId: 42 });
+    const result = await orgLetter();
 
-    expect(result.success).toBe(true);
+    expect(result.lobId).toBe("ltr_1");
     expect(state.lobCreateCalls[0].apiKey).toBe("live_platform_key");
-    expect(result.isTestMode).toBe(false);
+    expect(result.testMode).toBe(false);
     expect(state.probes.slice(0, 2)).toEqual(["byok-vault", "legacy-row"]);
     expect(state.probes.indexOf("platform")).toBeGreaterThan(state.probes.lastIndexOf("legacy-row"));
     expect(state.poolDebits).toEqual([]); // never the monthly pool
@@ -221,9 +273,7 @@ describe("mailProvider resolves Lob credentials through the single authority, va
   it("no own key and only the TEST platform key: house mail refused — a test-env piece is never charged (audit 2026-10-18)", async () => {
     for (const armed of [false, true]) {
       state.armed = armed;
-      const result = await sendLetter({ ...LETTER, organizationId: 42 });
-      expect(result.success).toBe(false);
-      expect(result.error).toMatch(/not available/);
+      await expect(orgLetter()).rejects.toThrow(/not available/);
     }
     expect(state.lobCreateCalls).toHaveLength(0);
     expect(houseMail.charges).toEqual([]);
@@ -231,9 +281,8 @@ describe("mailProvider resolves Lob credentials through the single authority, va
 
   it("no own key and no verified identity: refused — the platform key is never a silent fallback", async () => {
     state.identity = { ...state.identity, status: "draft" };
-    const result = await sendLetter({ ...LETTER, organizationId: 42 });
 
-    expect(result.success).toBe(false);
+    await expect(orgLetter()).rejects.toThrow(/not verified/);
     expect(state.lobCreateCalls).toHaveLength(0);
     expect(state.probes).not.toContain("platform");
     expect(state.poolDebits).toEqual([]);
@@ -242,17 +291,18 @@ describe("mailProvider resolves Lob credentials through the single authority, va
   it("sendPostcard delegates through the same authority — a vault org's postcards ship on its own account", async () => {
     state.byokKey = "live_vault_key";
 
-    const result = await sendPostcard({ ...POSTCARD, organizationId: 42 });
+    const result = await orgPostcard();
 
-    expect(result.success).toBe(true);
+    expect(result.lobId).toBe("psc_1");
     expect(state.lobCreateCalls[0]).toMatchObject({ kind: "postcard", apiKey: "live_vault_key" });
     expect(state.probes.every((p) => p === "byok-vault")).toBe(true);
   });
 
-  it("no organizationId: platform default path unchanged, and the vault is never consulted", async () => {
-    const result = await sendLetter({ ...LETTER });
+  it("org-less system mail (sendSystemLetter): platform path unchanged, and the vault is never consulted", async () => {
+    const result = await systemLetter();
 
-    expect(result.success).toBe(true);
+    expect(result.lobId).toBe("ltr_1");
+    expect(result.credentialSource).toBe("platform");
     expect(state.lobCreateCalls[0].apiKey).toBe("test_platform_key");
     expect(state.probes).toEqual(["platform"]);
   });
@@ -260,17 +310,13 @@ describe("mailProvider resolves Lob credentials through the single authority, va
   it("nothing configured anywhere: still refuses rather than fabricating a send", async () => {
     state.platformKey = null;
 
-    const result = await sendLetter({ ...LETTER, organizationId: 42 });
-
-    expect(result.success).toBe(false);
-    expect(result.error).toMatch(/not available/);
+    await expect(orgLetter()).rejects.toThrow(/not available/);
     expect(state.lobCreateCalls).toHaveLength(0);
     expect(state.poolDebits).toEqual([]);
 
-    // Org-less system mail with no platform key at all still refuses plainly.
-    const system = await sendLetter({ ...LETTER });
-    expect(system.success).toBe(false);
-    expect(system.error).toBe("mail provider not configured");
+    // Org-less system mail with no platform key at all still refuses plainly,
+    // with the retired path's exact message.
+    await expect(systemLetter()).rejects.toThrow("mail provider not configured");
   });
 });
 
@@ -278,23 +324,32 @@ describe("mailProvider resolves Lob credentials through the single authority, va
 
 const ROOT = path.resolve(__dirname, "../..");
 
-describe("mailProvider carries no independent Lob credential resolution (source scan)", () => {
+describe("mailProvider carries no send path and no credential resolution (source scan, K7-2a)", () => {
   const src = stripComments(
     fs.readFileSync(path.join(ROOT, "server/services/mailProvider.ts"), "utf8"),
   );
 
-  it("delegates to directMailService.getLobClient at all (vacuity guard)", () => {
-    // If the delegation disappeared, every "does not" assertion below could
-    // pass on a file that resolves credentials some brand-new third way.
-    expect(src).toMatch(/from\s+['"]\.\/directMailService['"]/);
-    expect(src).toContain("getLobClientForLane(");
+  it("keeps its non-send surface (vacuity guard)", () => {
+    // The billing/org routes consume exactly this — if it disappeared, every
+    // "does not" assertion below could pass on an empty file.
+    expect(src).toContain("export function getProviderInfo(");
+    expect(src).toContain("export enum MailProvider");
+  });
+
+  it("has NO Lob send path left — no SDK, no create, no lane, no client resolution", () => {
+    expect(src).not.toMatch(/\bnew\s+Lob\s*\(/);
+    expect(src).not.toMatch(/\.\s*(?:letters|postcards)\s*(?:as\s+any\s*\))?\s*\.\s*create\s*\(/);
+    expect(src).not.toContain("getLobClientForLane(");
+    expect(src).not.toContain("resolveMailLane(");
+    expect(src).not.toContain("resolvePlatformLobKey(");
+    expect(src).not.toMatch(/export (?:async )?function send(?:Letter|Postcard)\b/);
   });
 
   it("never queries organization_integrations itself", () => {
     expect(
       /organization_?integrations/i.test(src),
       "mailProvider.ts references organization_integrations again — org-row " +
-        "credential reads belong to directMailService.getLobClient, the single " +
+        "credential reads belong to directMailService.getOwnLobClient, the single " +
         "authority. A second resolution order is the exact defect this pins shut.",
     ).toBe(false);
     expect(src).not.toContain("readIntegrationCredentials");
