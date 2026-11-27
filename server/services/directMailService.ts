@@ -1,7 +1,6 @@
 import Lob from 'lob';
 import type { MailSenderIdentity } from '@shared/schema';
 import { storage } from '../storage';
-import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
 import { resolvePlatformLobKey, isLiveSendArmed } from './mail/liveSendInterlock';
 import { clock } from "../utils/clock";
@@ -162,10 +161,12 @@ interface LobClientResult {
  * THE single Lob credential authority (founder-approved consolidation,
  * 2026-08-16; lanes per founder decision 2026-10-17).
  *
- * The ORG's own Lob key: BYOK vault first, then the legacy
- * organization_integrations row. Null when the org has none — this function
- * never falls back to AcreOS's key. tests/unit/lobCredentialAuthority.test.ts
- * pins the order and the absence of a second resolver.
+ * The ORG's own Lob key: the BYOK vault ONLY (P9-2b removed the legacy
+ * organization_integrations leg — legacy lob keys reach the vault through
+ * the Stage-2 backfill, scripts/backfill-lob-credentials.ts). Null when the
+ * org has none — this function never falls back to AcreOS's key.
+ * tests/unit/lobCredentialAuthority.test.ts pins the vault-only authority
+ * and the absence of a second resolver.
  */
 export async function getOwnLobClient(orgId: number): Promise<LobClientResult | null> {
   try {
@@ -190,33 +191,12 @@ export async function getOwnLobClient(orgId: number): Promise<LobClientResult | 
     );
   }
 
-  try {
-    const integration = await storage.getOrganizationIntegration(orgId, 'lob');
-
-    const decrypted = readIntegrationCredentials<{ apiKey?: string }>(
-      integration,
-      orgId,
-      'lob (directMailService)',
-    );
-    if (integration && integration.isEnabled && decrypted) {
-      if (decrypted.apiKey) {
-        logger.info(`[DirectMailService] Using organization Lob credentials for org ${orgId}`);
-        return {
-          client: new Lob({ apiKey: decrypted.apiKey }),
-          source: 'organization',
-          isTestKey: decrypted.apiKey.startsWith('test_'),
-        };
-      }
-    }
-  } catch (error) {
-    logger.error(`[DirectMailService] Failed to get org Lob credentials for org ${orgId} — refusing rather than guessing the lane`, error);
-    const { ProviderNotContactedError } = await import('./actions/outwardAction');
-    throw new ProviderNotContactedError(
-      'Your provider keys could not be read just now, so nothing was mailed or charged. Try again shortly.',
-      error instanceof Error ? error : undefined,
-    );
-  }
-
+  // P9-2b: no legacy leg. An org whose lob key exists only in the legacy
+  // organization_integrations store is treated as having no own key until
+  // the Stage-2 backfill copies it into the vault — the same posture the
+  // regrid flip took in P9-2a. Returning null here routes the send to lane
+  // resolution (house mail under a verified identity, or a refusal), never
+  // to a silent read of the retired store.
   return null;
 }
 

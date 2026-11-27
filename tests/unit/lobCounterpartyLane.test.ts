@@ -5,7 +5,9 @@
  *
  * THE DEFECT THIS GATE EXISTS FOR. `directMailService.getLobClient` was made
  * the one credential authority (BYOK vault → legacy organization_integrations
- * row → platform key) and `mailProvider.ts` was routed through it. But
+ * row → platform key) and `mailProvider.ts` was routed through it. (P9-2b,
+ * 2026-11-26: the authority's legacy-row tier has since been removed — it is
+ * vault-only now; the case below pins that a row-only key is ignored.) But
  * `lobService.ts` — reached from `CommunicationsService.sendDirectMail`, whose
  * recipients are LEADS — resolved its client in its CONSTRUCTOR from
  * LOB_TEST_API_KEY / LOB_LIVE_API_KEY / LOB_API_KEY and never took an orgId at
@@ -208,7 +210,7 @@ describe("counterparty direct mail resolves the ORG's own Lob account first", ()
     expect(state.created.some((c) => c.apiKey === "live_platform_key")).toBe(false);
   });
 
-  it("the legacy organization_integrations row is honoured too — same authority, second tier", async () => {
+  it("the legacy organization_integrations row is IGNORED (P9-2b) — the authority is vault-only now", async () => {
     state.legacyRow = { isEnabled: true, credentials: { apiKey: "live_org_row_key" } };
 
     const result = await lobService.sendLetter(LETTER, "live", {
@@ -216,8 +218,14 @@ describe("counterparty direct mail resolves the ORG's own Lob account first", ()
       purpose: "counterparty",
     });
 
-    expect(result.success).toBe(true);
-    expect(state.created).toEqual([{ kind: "letter", apiKey: "live_org_row_key" }]);
+    // A row-only org is treated as having nothing connected: with no
+    // verified identity in this case, the send is refused rather than
+    // printing on the retired store's key. Before P9-2b this printed on
+    // "live_org_row_key"; the row reaches the vault only via the Stage-2
+    // backfill (scripts/backfill-lob-credentials.ts).
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/return address/);
+    expect(state.created).toEqual([]);
   });
 
   it("postcards resolve credentials the same way — IMPLEMENTATION symmetry, not production coverage", async () => {
