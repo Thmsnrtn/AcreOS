@@ -315,6 +315,16 @@ const SUPPORT_LAND_READS = [
   "get_listing_paste_text_view",
   "get_land_payoff_quote_view",
 ] as const;
+const SUPPORT_WS_READS = [
+  "get_wholesale_buy_box_view",
+  "get_wholesale_triage_view",
+  "get_wholesale_buyers_view",
+  "get_wholesale_buyer_matches_view",
+  "get_wholesale_assignments_view",
+  "get_wholesale_decision_view",
+  "get_wholesale_disposition_packet_view",
+  "get_wholesale_blasts_view",
+] as const;
 const PRIOR_RESOLVER_NAMES = [
   "search_knowledge_base",
   "search_resolved_tickets",
@@ -337,7 +347,7 @@ const RESOLVER_TOOL_NAMES: string[] = (() => {
   return [...m[1].matchAll(/"([a-z_0-9]+)"/g)].map((x) => x[1]);
 })();
 
-describe("BH drill 3 — capability pin, cured: the resolver subset is the prior set + exactly the four support buy-hold reads (composed with the five support land reads and the four support tax reads)", () => {
+describe("BH drill 3 — capability pin, cured: the resolver subset is the prior set + exactly the four support buy-hold reads (composed with the five support land reads, the four support tax reads and the eight support wholesale reads)", () => {
   const BH_TOOLS = [
     "get_rent_roll",
     "get_rental_leases",
@@ -353,12 +363,13 @@ describe("BH drill 3 — capability pin, cured: the resolver subset is the prior
     for (const t of BH_TOOLS) expect(toolsSrc, `chat path is missing ${t}`).toContain(t);
   });
 
-  it("the resolver subset is exactly the prior 13 + the five support land reads + the four support tax reads + the four support buy-hold reads, in order", () => {
+  it("the resolver subset is exactly the prior 13 + the five support land reads + the four support tax reads + the four support buy-hold reads + the eight support wholesale reads, in order", () => {
     expect(RESOLVER_TOOL_NAMES).toEqual([
       ...PRIOR_RESOLVER_NAMES.slice(0, 7),
       ...SUPPORT_LAND_READS,
       ...SUPPORT_TAX_READS,
       ...SUPPORT_BH_READS,
+      ...SUPPORT_WS_READS,
       ...PRIOR_RESOLVER_NAMES.slice(7),
     ]);
   });
