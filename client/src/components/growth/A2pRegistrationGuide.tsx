@@ -23,7 +23,8 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatDateTime } from "@/lib/format";
-import { A2P_10DLC_STEPS, A2P_SOURCE_LABELS, A2P_STATUSES, type A2pStatus, type A2pStatusSource } from "@shared/sms/a2p10dlc";
+import { type A2pStatus, type A2pStatusSource } from "@shared/sms/a2p10dlc";
+import { useA2p10dlc } from "@/lib/a2p-10dlc";
 
 interface A2pResponse {
   connected: null | { provider: string; phoneNumber: string; numberKind: string | null; readableByAcreOS: boolean };
@@ -52,6 +53,9 @@ const KEY = ["/api/sms/a2p-registration"];
 export function A2pRegistrationGuide() {
   const { toast } = useToast();
   const q = useQuery<A2pResponse>({ queryKey: KEY });
+  // The registration registry (statuses, source labels, steps) is served as
+  // data (/a2p-10dlc.json, BD-10); the guide waits for it like its query.
+  const { data: a2p, error: a2pError } = useA2p10dlc();
   const refresh = useMutation({
     mutationFn: async () => (await apiRequest("POST", "/api/sms/a2p-registration/refresh", {})).json(),
     onSuccess: () => {
@@ -79,6 +83,21 @@ export function A2pRegistrationGuide() {
     );
   }
   if (q.error) return <QueryErrorState error={q.error as Error} onRetry={() => q.refetch()} compact />;
+  if (a2pError) {
+    return (
+      <div className="rounded-md border border-destructive/40 p-4" role="alert" data-testid="a2p-registry-load-error">
+        <p className="text-sm text-destructive">The registration checklist could not be loaded. Reload the page to try again.</p>
+      </div>
+    );
+  }
+  if (!a2p) {
+    return (
+      <div className="space-y-2" data-testid="a2p-guide-loading">
+        <Skeleton className="h-6 w-64" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    );
+  }
   const data = q.data!;
   const reg = data.registration;
   const canRead = Boolean(data.connected?.readableByAcreOS);
@@ -121,7 +140,7 @@ export function A2pRegistrationGuide() {
                   {reg.numberKind === "toll_free" ? "Toll-free verification" : "Campaign"}: {STATUS_LABEL[reg.campaignStatus]}
                 </Badge>
                 <Badge variant={reg.statusSource === "self_reported" ? "secondary" : "outline"} data-testid="a2p-status-source">
-                  {A2P_SOURCE_LABELS[reg.statusSource]}
+                  {a2p.sourceLabels[reg.statusSource]}
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -146,7 +165,7 @@ export function A2pRegistrationGuide() {
         {/* 3. Exact fields */}
         <section aria-labelledby="a2p-fields" className="space-y-3">
           <h3 id="a2p-fields" className="text-sm font-semibold">3. What your provider will ask for</h3>
-          {A2P_10DLC_STEPS.map((step) => (
+          {a2p.steps.map((step) => (
             <details key={step.id} className="rounded-md border p-3" data-testid={`a2p-step-${step.id}`}>
               <summary className="cursor-pointer text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
                 {step.title}
@@ -193,7 +212,7 @@ export function A2pRegistrationGuide() {
                 <Select value={form.brandStatus} onValueChange={(v) => setForm({ ...form, brandStatus: v as A2pStatus })}>
                   <SelectTrigger id="a2p-brand"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {A2P_STATUSES.map((s) => <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>)}
+                    {a2p.statuses.map((s) => <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -202,7 +221,7 @@ export function A2pRegistrationGuide() {
                 <Select value={form.campaignStatus} onValueChange={(v) => setForm({ ...form, campaignStatus: v as A2pStatus })}>
                   <SelectTrigger id="a2p-campaign"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {A2P_STATUSES.map((s) => <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>)}
+                    {a2p.statuses.map((s) => <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
