@@ -1,0 +1,286 @@
+{
+  "name": "resolver-dispositions",
+  "description": "PF-11 RESOLVER-DISPOSITION REGISTER. Every chat-path Pax tool (a case label of executeTool in server/ai/tools.ts) has exactly one entry here, recording its resolver disposition: variant (a read-only support variant exists on the resolver path), write-pinned-absent (writes never get a support variant), excluded-with-reason (a read that must not have a variant because a pause-safe variant would bypass a permission-ladder fence), or founder-gated (the decision is parked on a named founder ruling). Enforced by tests/unit/paxResolverCoverage.test.ts, which derives the chat population mechanically \u2014 an entry naming no chat tool is STALE and fails; a chat tool with no entry and no Slice 1b named-list line fails BY NAME. This register records decisions; it is not a second authority for any fact a registry holds (the gate re-derives existence from the switches, the resolver subset, PAUSE_SAFE_SUPPORT_TOOLS and CAPABILITY_ROWS). Entries are removed only under their own revocation clause.",
+  "entries": [
+    {
+      "tool": "update_lead_status",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "create_lead",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "get_tax_certificates",
+      "disposition": "variant",
+      "variant": "get_tax_certificates_book"
+    },
+    {
+      "tool": "get_tax_certificate",
+      "disposition": "variant",
+      "variant": "get_tax_certificate_record"
+    },
+    {
+      "tool": "get_tax_certificate_clock",
+      "disposition": "variant",
+      "variant": "get_tax_certificate_clock_view"
+    },
+    {
+      "tool": "get_tax_certificate_ledger",
+      "disposition": "variant",
+      "variant": "get_tax_certificate_ledger_view"
+    },
+    {
+      "tool": "record_tax_ledger_entry",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "get_rent_roll",
+      "disposition": "variant",
+      "variant": "get_rent_roll_view"
+    },
+    {
+      "tool": "get_rental_leases",
+      "disposition": "variant",
+      "variant": "get_rental_leases_view"
+    },
+    {
+      "tool": "get_tenants",
+      "disposition": "excluded-with-reason",
+      "reason": "PII-LADDERED READ (BH-DEF-1.1, PR #764, auditor-verified). The chat path enforces the tenant_pii_read scope even while paused; a pause-safe support variant would skip executeSupportTool's ladder entirely (the ladder is guarded by if (!pauseSafe)) and no truthful gated placement exists in the current support classification, so any variant would be ungated, misregistered, or both.",
+      "revocation": "If a gated-read classification lands in the support registry (a truthful non-pause-safe read placement whose capability row can declare tenant_pii_read), build the gated variant, replace this entry with a variant entry, and delete this exclusion in the same PR."
+    },
+    {
+      "tool": "get_lease_ledger",
+      "disposition": "variant",
+      "variant": "get_lease_ledger_view"
+    },
+    {
+      "tool": "get_rental_underwriting_decision",
+      "disposition": "variant",
+      "variant": "get_rental_underwriting_view"
+    },
+    {
+      "tool": "record_rent_payment",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "generate_scheduled_rent_charges",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "get_wholesale_buy_box",
+      "disposition": "variant",
+      "variant": "get_wholesale_buy_box_view"
+    },
+    {
+      "tool": "get_wholesale_triage",
+      "disposition": "variant",
+      "variant": "get_wholesale_triage_view"
+    },
+    {
+      "tool": "get_wholesale_buyers",
+      "disposition": "variant",
+      "variant": "get_wholesale_buyers_view"
+    },
+    {
+      "tool": "get_wholesale_buyer_matches",
+      "disposition": "variant",
+      "variant": "get_wholesale_buyer_matches_view"
+    },
+    {
+      "tool": "get_wholesale_assignments",
+      "disposition": "variant",
+      "variant": "get_wholesale_assignments_view"
+    },
+    {
+      "tool": "get_wholesale_decision",
+      "disposition": "variant",
+      "variant": "get_wholesale_decision_view"
+    },
+    {
+      "tool": "get_wholesale_disposition_packet",
+      "disposition": "variant",
+      "variant": "get_wholesale_disposition_packet_view"
+    },
+    {
+      "tool": "get_wholesale_blasts",
+      "disposition": "variant",
+      "variant": "get_wholesale_blasts_view"
+    },
+    {
+      "tool": "record_buyer_blast_response",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "get_parcel_passport",
+      "disposition": "variant",
+      "variant": "get_parcel_passport_view"
+    },
+    {
+      "tool": "get_land_listings",
+      "disposition": "variant",
+      "variant": "get_land_listings_view"
+    },
+    {
+      "tool": "get_land_listing",
+      "disposition": "variant",
+      "variant": "get_land_listing_view"
+    },
+    {
+      "tool": "get_listing_paste_text",
+      "disposition": "variant",
+      "variant": "get_listing_paste_text_view"
+    },
+    {
+      "tool": "get_land_payoff_quote",
+      "disposition": "variant",
+      "variant": "get_land_payoff_quote_view"
+    },
+    {
+      "tool": "mark_land_listing_listed",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "get_notes",
+      "disposition": "founder-gated",
+      "variant": "get_notes_book",
+      "reason": "Variant built in PR #738 (N9-DEF-1 cure) but unlanded: the new support case is a purpose-ledger census candidate whose DEBT entry and DEBT_BASELINE raise are Founder Decision #1, pending Tom's ruling. This entry records that the decision is the founder's; it does not decide it, and it creates no census DEBT entry.",
+      "revocation": "On Tom's DEBT-baseline ruling: if approved, land the variant and flip this entry to variant in the landing PR; if declined, replace this entry with the disposition the ruling directs (excluded-with-reason citing the ruling, or write-pinned-absent if the surface is retired)."
+    },
+    {
+      "tool": "create_property",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "update_property",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "create_deal",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "update_deal",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "create_task",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "update_task",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "complete_task",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "create_properties_batch",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "generate_offer_letter",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "send_email",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "send_sms",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "schedule_followup",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "draft_offer",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "schedule_follow_up",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "send_gmail",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "send_slack_message",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "create_stripe_payment_link",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "create_calendar_event",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "trigger_zapier",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "trigger_make",
+      "disposition": "write-pinned-absent"
+    }
+  ],
+  "supportNative": [
+    {
+      "name": "search_knowledge_base",
+      "reason": "Support-native resolver tool; searches the support knowledge base for ticket grounding; no chat twin exists or is owed."
+    },
+    {
+      "name": "search_resolved_tickets",
+      "reason": "Support-native resolver tool; searches previously resolved tickets; no chat twin exists or is owed."
+    },
+    {
+      "name": "get_similar_resolutions",
+      "reason": "Support-native resolver tool; retrieves resolutions similar to the current ticket; no chat twin exists or is owed."
+    },
+    {
+      "name": "get_troubleshooting_steps",
+      "reason": "Support-native resolver tool; returns troubleshooting steps for a diagnosed issue; no chat twin exists or is owed."
+    },
+    {
+      "name": "diagnose_account",
+      "reason": "Support-native resolver tool; runs account diagnostics (subscription, usage, data checks) for a ticket; no chat twin exists or is owed."
+    },
+    {
+      "name": "check_data_integrity",
+      "reason": "Support-native resolver tool; checks the account's data integrity during diagnosis; no chat twin exists or is owed."
+    },
+    {
+      "name": "get_account_summary",
+      "reason": "Support-native resolver tool; summarises the ticket customer's account for grounding; no chat twin exists or is owed."
+    },
+    {
+      "name": "query_user_data",
+      "reason": "Support-native resolver tool; generic read-only query over the ticket customer's data for diagnosis; no chat twin exists or is owed."
+    },
+    {
+      "name": "get_user_activity",
+      "reason": "Support-native resolver tool; reads the ticket customer's recent activity for diagnosis; no chat twin exists or is owed."
+    },
+    {
+      "name": "estimate_resolution_confidence",
+      "reason": "Support-native resolver tool; estimates auto-resolution confidence for the ticket; no chat twin exists or is owed."
+    },
+    {
+      "name": "recall_user_memory",
+      "reason": "Support-native resolver tool; recalls stored context about the ticket customer; no chat twin exists or is owed."
+    },
+    {
+      "name": "draft_customer_response",
+      "reason": "Support-native resolver tool; drafts the customer-facing response (draft only, FD5); no chat twin exists or is owed."
+    },
+    {
+      "name": "escalate_to_human",
+      "reason": "Support-native resolver tool; escalates the ticket to a human; no chat twin exists or is owed."
+    }
+  ]
+}
