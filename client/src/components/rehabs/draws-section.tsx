@@ -121,6 +121,12 @@ export function DrawsSection({ rehabId }: { rehabId: string }) {
           {data.rehab.lenderLoanCents !== null ? fmtUsd(data.rehab.lenderLoanCents) : "no loan"}
           {data.rehab.lenderRateBps !== null && ` at ${(data.rehab.lenderRateBps / 100).toFixed(2)}%`}
         </CardDescription>
+        <p className="text-xs text-muted-foreground">
+          This schedule is your record of the draws under your loan — requests,
+          inspections, and funding as you enter them. AcreOS does not fund,
+          hold, release, or verify draw money; funding happens between you and
+          your lender.
+        </p>
       </CardHeader>
       <CardContent className="space-y-3">
         {data.draws.length === 0 ? (

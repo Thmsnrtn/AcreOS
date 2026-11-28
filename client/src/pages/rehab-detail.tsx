@@ -26,6 +26,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { BidsSection } from "@/components/rehabs/bids-section";
 import { DrawsSection } from "@/components/rehabs/draws-section";
 import { ArvCalculator } from "@/components/parcels/arv-calculator";
@@ -888,6 +889,10 @@ export default function RehabDetailPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      {/* Worksheet disclaimer — figures below are operator-entered records
+          and computations from them, not a valuation or advice (F-7). */}
+      <RequiredDisclaimer type="worksheet" className="mb-6" />
 
       {/* Timeline & holding — kickoff baselines, the status log and recorded
           carry (Leg 3). Plan, scenario and actual are shown side by side and
