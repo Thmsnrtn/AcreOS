@@ -31,14 +31,15 @@
  *    permanent hard-stops (pricing / legal / >$500 spend / customer-data
  *    deletion) can NEVER auto-execute, regardless of any dial.
  *  - Dedup: a gate with an open ask, an answered ask, or a completed
- *    auto-execution never re-fires. State persists in the generic
- *    founder_settings key-value table (gate_watcher.state.<gateId>) — no new
- *    table needed.
+ *    auto-execution never re-fires. State persists in the operational_state
+ *    key-value table (namespace 'gate_watcher', keys
+ *    gate_watcher.state.<gateId>).
  */
 
-import { gte, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import { founderSettings, mrrSnapshots } from "@shared/schema";
+import { mrrSnapshots, operationalState } from "@shared/schema";
+import { upsertOpStateRow } from "../operationalState";
 import { logger } from "../../utils/logger";
 
 // ============================================
@@ -760,18 +761,26 @@ export async function gatherGateInputs(now = clock.now()): Promise<GateInputs> {
 }
 
 // ============================================
-// State persistence (founder_settings key-value rows)
+// State persistence (operational_state key-value rows, namespace 'gate_watcher')
 // ============================================
 
 export const GATE_STATE_KEY_PREFIX = "gate_watcher.state.";
 const gateStateKey = (gateId: string) => `${GATE_STATE_KEY_PREFIX}${gateId}`;
 
-async function loadGateStates(gateIds: string[]): Promise<Map<string, GateState>> {
+// TEST SEAM: loadGateStates/saveGateState are exported only so
+// tests/unit/gateWatcherPersistence.test.ts can pin the store-level
+// persistence (production reaches both through runGateWatch in this module).
+export async function loadGateStates(gateIds: string[]): Promise<Map<string, GateState>> {
   const states = new Map<string, GateState>();
   const rows = await db
-    .select({ key: founderSettings.key, value: founderSettings.value })
-    .from(founderSettings)
-    .where(inArray(founderSettings.key, gateIds.map(gateStateKey)));
+    .select({ key: operationalState.key, value: operationalState.value })
+    .from(operationalState)
+    .where(
+      and(
+        eq(operationalState.namespace, "gate_watcher"),
+        inArray(operationalState.key, gateIds.map(gateStateKey)),
+      ),
+    );
   for (const row of rows) {
     try {
       const parsed = JSON.parse(row.value) as GateState;
@@ -787,23 +796,17 @@ async function loadGateStates(gateIds: string[]): Promise<Map<string, GateState>
   return states;
 }
 
-async function saveGateState(gate: GateDefinition, state: GateState): Promise<void> {
+export async function saveGateState(gate: GateDefinition, state: GateState): Promise<void> {
   const key = gateStateKey(gate.id);
   const value = JSON.stringify(state);
-  await db
-    .insert(founderSettings)
-    .values({
-      key,
-      value,
-      valueType: "json",
-      description: `Gate-watcher state for '${gate.id}' (${gate.description})`,
-      category: "general",
-      updatedBy: "gate-watcher",
-    })
-    .onConflictDoUpdate({
-      target: founderSettings.key,
-      set: { value, updatedAt: clock.now(), updatedBy: "gate-watcher" },
-    });
+  await upsertOpStateRow(db, {
+    namespace: "gate_watcher",
+    key,
+    value,
+    valueType: "json",
+    description: `Gate-watcher state for '${gate.id}' (${gate.description})`,
+    updatedBy: "gate-watcher",
+  });
 }
 
 // ============================================
