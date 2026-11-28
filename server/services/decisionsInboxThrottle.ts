@@ -20,7 +20,7 @@
  *   same condition, cooldown elapsed → allow  cooldown_elapsed
  *   daily cap (standard only), last  → deny   suppressed_daily_cap (NO subject state written)
  *
- * State lives in founder_settings, written with the DIRECT upsert pattern copied
+ * State lives in operational_state, written with the DIRECT upsert pattern copied
  * from autopilot/gateWatcher.ts saveGateState. NEVER call
  * founderSettings.setSetting here: it throws "Unknown setting key" for any key
  * not in KNOBS.
@@ -60,9 +60,9 @@
  */
 
 import { createHash } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { founderSettings } from "@shared/schema";
+import { operationalState } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
@@ -453,7 +453,7 @@ export function createThrottle(deps: { backend: ThrottleBackend; now?: () => Dat
 }
 
 // ============================================
-// DB backend (founder_settings, direct upsert, advisory locks)
+// DB backend (operational_state, direct upsert, advisory locks)
 // ============================================
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -466,9 +466,9 @@ function dbStore(tx: StoreHandle): ThrottleStore {
   const dayKey = (p: string, d: string) => `${DAY_KEY_PREFIX}${p}.${d}`;
   const readValue = async (key: string): Promise<string | null> => {
     const rows = await tx
-      .select({ value: founderSettings.value })
-      .from(founderSettings)
-      .where(eq(founderSettings.key, key));
+      .select({ value: operationalState.value })
+      .from(operationalState)
+      .where(and(eq(operationalState.namespace, "inbox_throttle"), eq(operationalState.key, key)));
     return rows[0]?.value ?? null;
   };
   // Writes are raw-SQL upserts over the given handle, NOT drizzle builder
@@ -479,7 +479,7 @@ function dbStore(tx: StoreHandle): ThrottleStore {
   // transaction stubs alike).
   const upsert = async (key: string, value: string, description: string) => {
     await tx.execute(
-      sql`INSERT INTO founder_settings (key, value, value_type, description, category, updated_by) VALUES (${key}, ${value}, 'json', ${description}, 'general', ${UPDATED_BY}) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = ${clock.now()}, updated_by = EXCLUDED.updated_by`,
+      sql`INSERT INTO operational_state (namespace, key, value, value_type, description, updated_by) VALUES ('inbox_throttle', ${key}, ${value}, 'json', ${description}, ${UPDATED_BY}) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value, updated_at = ${clock.now()}, updated_by = EXCLUDED.updated_by`,
     );
   };
   return {
