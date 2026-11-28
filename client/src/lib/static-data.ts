@@ -33,6 +33,8 @@ export const SUB_PROCESSORS_URL = "/sub-processors.json";
 export const LANDING_COPY_URL = "/landing-copy.json";
 export const PALETTE_VERBS_URL = "/palette-verbs.json";
 export const GLOSSARY_URL = "/glossary.json";
+export const NOTE_TAPE_FIELDS_URL = "/note-tape-fields.json";
+export const A2P_10DLC_URL = "/a2p-10dlc.json";
 
 const cache = new Map<string, Promise<unknown>>();
 

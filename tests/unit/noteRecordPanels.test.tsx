@@ -22,6 +22,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getQueryFn } from "../../client/src/lib/queryClient";
 import { NoteRecordPanels } from "../../client/src/components/notes/NoteRecordPanels";
+import { NOTE_TAPE_FIELDS } from "../../shared/notes/noteTapeFields";
 
 const tape = (row: number, column: string, raw: string) => ({ value: null, kind: "value", source: "note_tape", sourceRef: { fileName: "tape.csv", fileRow: row, column, raw }, asOf: "2026-09-30", confidence: "medium", basis: "stated on the seller's tape", decayClass: "months", observedAt: "2026-10-27T12:00:00.000Z" });
 const rv = (field: string, label: string, value: unknown, provenance: unknown, extra: Record<string, unknown> = {}) => ({ field, label, value, provenance, observations: provenance ? [provenance] : [], absence: value === null ? { status: "never_stated" } : null, disagreement: null, ...extra });
@@ -79,7 +80,16 @@ let root: Root;
 let host: HTMLDivElement;
 
 async function mount() {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })));
+  // Post-BD-10 the panels also fetch the note-tape catalogue as served data
+  // (/note-tape-fields.json), so the stub answers by URL: the real catalogue
+  // for the asset (from its source-of-truth module), the record body for the
+  // note query. A stub that answered the record body for the asset would
+  // leave the panels at their (correct) fields load-error gate.
+  vi.stubGlobal("fetch", vi.fn(async (input: unknown) => {
+    const url = typeof input === "string" ? input : (input as { url?: string })?.url ?? "";
+    const payload = url.includes("note-tape-fields.json") ? NOTE_TAPE_FIELDS : body;
+    return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+  }));
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);

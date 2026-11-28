@@ -116,6 +116,33 @@
  *      silently shorter list or legal document.
  *      Regenerate: npx tsx -e 'import {SUB_PROCESSORS, SUB_PROCESSORS_LAST_UPDATED} from "./client/src/data/sub-processors";
  *      import fs from "node:fs"; fs.writeFileSync("client/public/sub-processors.json", JSON.stringify({lastUpdated: SUB_PROCESSORS_LAST_UPDATED, processors: SUB_PROCESSORS}, null, 2)+"\n")'
+ *   12. (bundle diet BD-10) the note-tape field catalogue:
+ *      NOTE_TAPE_FIELDS (shared/notes/noteTapeFields.ts, source of
+ *      truth — the server validator and import services import it
+ *      synchronously) → /note-tape-fields.json; the import mapping UI
+ *      and the note record panels load it via useNoteTapeFields
+ *      (client/src/lib/note-tape-fields.ts) over the shared loader,
+ *      the shape is validated at the boundary (isNoteTapeFields), the
+ *      by-key map is derived from the served array with the module's
+ *      own derivation, value formatting runs through
+ *      formatNoteTapeValue (pinned identical to the pre-extraction
+ *      formatter below), and a loader failure renders a visible error
+ *      on both surfaces, never a silently field-less mapping or
+ *      unformatted values. Only the catalogue left the bundle; the
+ *      module's validators and logic stay shared code.
+ *      Regenerate: npx tsx -e 'import {NOTE_TAPE_FIELDS} from "./shared/notes/noteTapeFields";
+ *      import fs from "node:fs"; fs.writeFileSync("client/public/note-tape-fields.json", JSON.stringify(NOTE_TAPE_FIELDS, null, 2)+"\n")'
+ *   13. (bundle diet BD-10, leg 2) the A2P 10DLC registration
+ *      registry: A2P_STATUSES + A2P_SOURCE_LABELS + A2P_10DLC_STEPS
+ *      (shared/sms/a2p10dlc.ts, source of truth — the server imports
+ *      it synchronously) → /a2p-10dlc.json; the registration guide
+ *      loads it via useA2p10dlc (client/src/lib/a2p-10dlc.ts) over
+ *      the shared loader, the shape is validated at the boundary
+ *      (isA2p10dlcData), and a loader failure renders a visible
+ *      error, never a silently empty checklist. Only the registry
+ *      data left the bundle; the module's logic stays shared code.
+ *      Regenerate: npx tsx -e 'import {A2P_STATUSES, A2P_SOURCE_LABELS, A2P_10DLC_STEPS} from "./shared/sms/a2p10dlc";
+ *      import fs from "node:fs"; fs.writeFileSync("client/public/a2p-10dlc.json", JSON.stringify({statuses: A2P_STATUSES, sourceLabels: A2P_SOURCE_LABELS, steps: A2P_10DLC_STEPS}, null, 2)+"\n")'
  */
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
@@ -176,7 +203,9 @@ import {
   PAX_STANDING_LINE,
 } from "../../shared/pax-glossary-core";
 import {
+  A2P_10DLC_URL,
   DEPOSIT_RETURN_RULES_URL,
+  NOTE_TAPE_FIELDS_URL,
   SUB_PROCESSORS_URL,
   loadStaticData,
   substituteTokens,
@@ -199,6 +228,24 @@ import {
   isSubProcessorsData,
   type SubProcessorsData,
 } from "../../client/src/lib/sub-processors";
+import {
+  NOTE_TAPE_FIELD,
+  NOTE_TAPE_FIELDS,
+} from "../../shared/notes/noteTapeFields";
+import {
+  formatNoteTapeValue,
+  isNoteTapeFields,
+  noteTapeFieldByKey,
+} from "../../client/src/lib/note-tape-fields";
+import {
+  A2P_10DLC_STEPS,
+  A2P_SOURCE_LABELS,
+  A2P_STATUSES,
+} from "../../shared/sms/a2p10dlc";
+import {
+  isA2p10dlcData,
+  type A2p10dlcData,
+} from "../../client/src/lib/a2p-10dlc";
 import {
   selectCampaignTemplates,
   type CampaignTemplatesData,
@@ -245,6 +292,15 @@ const SUBPROC_ASSET = readJson(
 const MODULE_SUBPROC_DATA: SubProcessorsData = {
   lastUpdated: SUB_PROCESSORS_LAST_UPDATED,
   processors: [...SUB_PROCESSORS],
+};
+const NOTE_TAPE_ASSET = readJson(
+  "client/public/note-tape-fields.json",
+) as typeof NOTE_TAPE_FIELDS;
+const A2P_ASSET = readJson("client/public/a2p-10dlc.json") as A2p10dlcData;
+const MODULE_A2P_DATA: A2p10dlcData = {
+  statuses: A2P_STATUSES,
+  sourceLabels: A2P_SOURCE_LABELS,
+  steps: A2P_10DLC_STEPS,
 };
 
 // ── 1. Verbatim: asset data == module data ────────────────────────────────
@@ -344,6 +400,26 @@ describe("served assets are verbatim the modules' data", () => {
       JSON.stringify(MODULE_SUBPROC_DATA, null, 2) + "\n",
     );
   });
+
+  it("note-tape-fields.json deep-equals NOTE_TAPE_FIELDS", () => {
+    expect(NOTE_TAPE_ASSET).toEqual(NOTE_TAPE_FIELDS);
+  });
+
+  it("note-tape-fields.json is the generator's exact output (regenerate with the header's command)", () => {
+    expect(read("client/public/note-tape-fields.json")).toBe(
+      JSON.stringify(NOTE_TAPE_FIELDS, null, 2) + "\n",
+    );
+  });
+
+  it("a2p-10dlc.json deep-equals the A2P registry module data", () => {
+    expect(A2P_ASSET).toEqual(MODULE_A2P_DATA);
+  });
+
+  it("a2p-10dlc.json is the generator's exact output (regenerate with the header's command)", () => {
+    expect(read("client/public/a2p-10dlc.json")).toBe(
+      JSON.stringify(MODULE_A2P_DATA, null, 2) + "\n",
+    );
+  });
 });
 
 // ── 1f. Sub-processors: served list renders exactly as the module ───────
@@ -402,6 +478,104 @@ describe("isSubProcessorsData guards the loaded asset shape", () => {
     ],
   ])("rejects %s", (_label, payload) => {
     expect(isSubProcessorsData(payload)).toBe(false);
+  });
+});
+
+// ── 1h. Note tape: served catalogue derives and formats as the module ───
+
+describe("the served note-tape catalogue derives and formats as the module", () => {
+  const servedByKey = noteTapeFieldByKey(NOTE_TAPE_ASSET);
+
+  it("the by-key map derived from the served asset is the module's NOTE_TAPE_FIELD", () => {
+    expect(servedByKey).toEqual(NOTE_TAPE_FIELD);
+  });
+
+  it("formatNoteTapeValue over the served map matches the module map for every field and sample value", () => {
+    const samples: unknown[] = [null, undefined, 0, 99, 850, 875, 8425000, "paid_off", "performing", "2025-10-25", "Jane Q Borrower"];
+    for (const field of NOTE_TAPE_FIELDS) {
+      for (const v of samples) {
+        expect(formatNoteTapeValue(servedByKey, field.key, v)).toBe(
+          formatNoteTapeValue(NOTE_TAPE_FIELD, field.key, v),
+        );
+      }
+    }
+  });
+
+  it("the kind formatting is the pre-extraction formatting, in words", () => {
+    expect(formatNoteTapeValue(servedByKey, "originalPrincipal", 8425000)).toBe("$84,250.00");
+    expect(formatNoteTapeValue(servedByKey, "currentBalance", 99)).toBe("$0.99");
+    expect(formatNoteTapeValue(servedByKey, "interestRate", 850)).toBe("8.5%");
+    expect(formatNoteTapeValue(servedByKey, "interestRate", 800)).toBe("8%");
+    expect(formatNoteTapeValue(servedByKey, "status", "paid_off")).toBe("paid off");
+    expect(formatNoteTapeValue(servedByKey, "termMonths", 360)).toBe("360 months");
+    expect(formatNoteTapeValue(servedByKey, "payerName", "Jane Q Borrower")).toBe("Jane Q Borrower");
+    expect(formatNoteTapeValue(servedByKey, "originalPrincipal", null)).toBe("");
+  });
+});
+
+// ── 1i. Note-tape shape guard (the #716 D-2 mandate) ────────────────────
+
+describe("isNoteTapeFields guards the loaded asset shape", () => {
+  it("accepts the served asset and the module catalogue", () => {
+    expect(isNoteTapeFields(NOTE_TAPE_ASSET)).toBe(true);
+    expect(isNoteTapeFields(NOTE_TAPE_FIELDS)).toBe(true);
+  });
+
+  it("rejects the D-2 payload: a 200 with body {}", () => {
+    expect(isNoteTapeFields({})).toBe(false);
+  });
+
+  it.each([
+    ["null", null],
+    ["a string", "fields"],
+    ["an empty list", []],
+    ["a field missing its label", [{ key: "status", group: "terms", kind: "status", required: true, decay: "months", aliases: [], fix: "x" }]],
+    ["a field with an unknown kind", [{ key: "status", label: "Status", group: "terms", kind: "bogus", required: true, decay: "months", aliases: [], fix: "x" }]],
+    ["a field with an unknown group", [{ key: "status", label: "Status", group: "bogus", kind: "status", required: true, decay: "months", aliases: [], fix: "x" }]],
+    ["a field with a non-boolean required", [{ key: "status", label: "Status", group: "terms", kind: "status", required: "yes", decay: "months", aliases: [], fix: "x" }]],
+    ["a field with non-string aliases", [{ key: "status", label: "Status", group: "terms", kind: "status", required: true, decay: "months", aliases: [42], fix: "x" }]],
+    ["a field with an unknown decay", [{ key: "status", label: "Status", group: "terms", kind: "status", required: true, decay: "bogus", aliases: [], fix: "x" }]],
+  ])("rejects %s", (_label, payload) => {
+    expect(isNoteTapeFields(payload)).toBe(false);
+  });
+});
+
+// ── 1j. A2P registry shape guard (the #716 D-2 mandate) ─────────────────
+
+describe("isA2p10dlcData guards the loaded asset shape", () => {
+  it("accepts the served asset and the module registry", () => {
+    expect(isA2p10dlcData(A2P_ASSET)).toBe(true);
+    expect(isA2p10dlcData(MODULE_A2P_DATA)).toBe(true);
+  });
+
+  it("rejects the D-2 payload: a 200 with body {}", () => {
+    expect(isA2p10dlcData({})).toBe(false);
+  });
+
+  it.each([
+    ["null", null],
+    ["an array", []],
+    ["empty statuses", { statuses: [], sourceLabels: A2P_SOURCE_LABELS, steps: A2P_10DLC_STEPS }],
+    ["a missing self-reported label", { statuses: A2P_STATUSES, sourceLabels: { provider_api: "Read from your provider" }, steps: A2P_10DLC_STEPS }],
+    ["empty steps", { statuses: A2P_STATUSES, sourceLabels: A2P_SOURCE_LABELS, steps: [] }],
+    [
+      "a step field with an unknown required marker",
+      {
+        statuses: A2P_STATUSES,
+        sourceLabels: A2P_SOURCE_LABELS,
+        steps: [{ id: "brand", title: "Brand", why: "w", fields: [{ attribute: "a", label: "A", required: "maybe" }] }],
+      },
+    ],
+    [
+      "a step missing its why",
+      {
+        statuses: A2P_STATUSES,
+        sourceLabels: A2P_SOURCE_LABELS,
+        steps: [{ id: "brand", title: "Brand", fields: [] }],
+      },
+    ],
+  ])("rejects %s", (_label, payload) => {
+    expect(isA2p10dlcData(payload)).toBe(false);
   });
 });
 
@@ -1089,6 +1263,66 @@ describe("no client file value-imports the externalised registries", () => {
     );
   });
 
+  it("the note-tape consumers load the catalogue through the validated loader", () => {
+    expect(NOTE_TAPE_FIELDS_URL).toBe("/note-tape-fields.json");
+    expect(read("client/src/lib/static-data.ts")).toContain(
+      'export const NOTE_TAPE_FIELDS_URL = "/note-tape-fields.json"',
+    );
+    expect(read("client/src/lib/note-tape-fields.ts")).toContain(
+      "isNoteTapeFields",
+    );
+    const importer = stripComments(
+      read("client/src/components/notes/NoteTapeImport.tsx"),
+    );
+    expect(importer).toContain("useNoteTapeFields()");
+    // The catalogue itself must NOT come back into the client as a
+    // value import — that is what dragged it into the chunks.
+    expect(importer).not.toContain("NOTE_TAPE_FIELDS");
+    const panels = stripComments(
+      read("client/src/components/notes/NoteRecordPanels.tsx"),
+    );
+    expect(panels).toContain("useNoteTapeFields()");
+    expect(panels).not.toContain("NOTE_TAPE_FIELD");
+  });
+
+  it("the note-tape consumers render a VISIBLE state on loader failure or delay, never a silently field-less surface", () => {
+    const importer = stripComments(
+      read("client/src/components/notes/NoteTapeImport.tsx"),
+    );
+    expect(importer).toContain('data-testid="note-tape-fields-load-error"');
+    expect(importer).toContain('data-testid="note-tape-fields-loading"');
+    const panels = stripComments(
+      read("client/src/components/notes/NoteRecordPanels.tsx"),
+    );
+    expect(panels).toContain('data-testid="note-record-fields-load-error"');
+    expect(panels).toMatch(/role="alert"/);
+  });
+
+  it("the A2P guide loads the registry through the validated loader", () => {
+    expect(A2P_10DLC_URL).toBe("/a2p-10dlc.json");
+    expect(read("client/src/lib/static-data.ts")).toContain(
+      'export const A2P_10DLC_URL = "/a2p-10dlc.json"',
+    );
+    expect(read("client/src/lib/a2p-10dlc.ts")).toContain("isA2p10dlcData");
+    const guide = stripComments(
+      read("client/src/components/growth/A2pRegistrationGuide.tsx"),
+    );
+    expect(guide).toContain("useA2p10dlc()");
+    // The registry itself must NOT come back into the client as a
+    // value import — that is what dragged it into the chunks.
+    expect(guide).not.toContain("A2P_10DLC_STEPS");
+    expect(guide).not.toContain("A2P_SOURCE_LABELS");
+    expect(guide).not.toContain("A2P_STATUSES");
+  });
+
+  it("the A2P guide renders a VISIBLE error on loader failure, never a silently empty checklist", () => {
+    const guide = stripComments(
+      read("client/src/components/growth/A2pRegistrationGuide.tsx"),
+    );
+    expect(guide).toContain('data-testid="a2p-registry-load-error"');
+    expect(guide).toMatch(/role="alert"/);
+  });
+
   it("/trust renders a VISIBLE error on loader failure, never a blank page", () => {
     const page = stripComments(read("client/src/pages/trust.tsx"));
     expect(page).toContain("useStaticData<TrustSection[]>(TRUST_CONTENT_URL)");
@@ -1200,6 +1434,8 @@ describe("static server cache discipline", () => {
       "/onboarding-checklist.json",
       "/deposit-return-rules.json",
       "/sub-processors.json",
+      "/note-tape-fields.json",
+      "/a2p-10dlc.json",
     ]) {
       expect(src).toContain(`"${url}"`);
     }

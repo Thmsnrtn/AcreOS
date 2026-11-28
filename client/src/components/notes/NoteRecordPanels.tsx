@@ -15,7 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
-import { NOTE_TAPE_FIELD, type NoteTapeFieldKey } from "@shared/notes/noteTapeFields";
+import type { NoteTapeFieldKey } from "@shared/notes/noteTapeFields";
+import { formatNoteTapeValue, noteTapeFieldByKey, useNoteTapeFields } from "@/lib/note-tape-fields";
 import { formatDate } from "@/lib/format";
 import { DisagreementPanel as SharedDisagreementPanel, ObservationChip } from "@/components/provenance/FieldRecord";
 
@@ -81,16 +82,7 @@ interface NoteEventView {
 const usd = (c: number) => (c / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 const SOURCE_LABEL: Record<string, string> = { note_tape: "Seller's note tape", operator_correction: "Corrected during import", warehouse: "AcreOS parcel record" };
 
-function format(field: NoteTapeFieldKey, v: unknown): string {
-  if (v === null || v === undefined) return "";
-  switch (NOTE_TAPE_FIELD[field]?.kind) {
-    case "money": return usd(Number(v));
-    case "rate": return `${(Number(v) / 100).toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}%`;
-    case "status": return String(v).replace("_", " ");
-    case "int": return `${v} months`;
-    default: return String(v);
-  }
-}
+type NoteTapeFormat = (field: NoteTapeFieldKey, v: unknown) => string;
 
 function ProvenanceChip({ p, label }: { p: ObservationView | null; label: string }) {
   return <ObservationChip p={p} label={label} sourceLabel={SOURCE_LABEL} asOfMissing="the tape states no as-of date" />;
@@ -102,7 +94,7 @@ function absenceText(r: RecordedValue, emptyText: string): string {
   return emptyText;
 }
 
-function ValueRow({ r, emptyText }: { r: RecordedValue; emptyText: string }) {
+function ValueRow({ r, emptyText, format }: { r: RecordedValue; emptyText: string; format: NoteTapeFormat }) {
   const shown = r.value === null || r.value === undefined ? null : format(r.field, r.value);
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-1.5" data-testid={`note-record-${r.field}`}>
@@ -117,7 +109,7 @@ function ValueRow({ r, emptyText }: { r: RecordedValue; emptyText: string }) {
 }
 
 /** N4 — every value each source stated for a field, side by side. Nothing is resolved. */
-function DisagreementPanel({ fields }: { fields: RecordedValue[] }) {
+function DisagreementPanel({ fields, format }: { fields: RecordedValue[]; format: NoteTapeFormat }) {
   return <SharedDisagreementPanel fields={fields} noun="term" testIdPrefix="note" format={format} sourceLabel={SOURCE_LABEL} asOfMissing="the tape states no as-of date" />;
 }
 
@@ -142,6 +134,9 @@ const DOC_BADGE: Record<string, { text: string; variant: "secondary" | "destruct
 
 export function NoteRecordPanels({ noteId }: { noteId: string }) {
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery<NoteRecord>({ queryKey: [`/api/notes/${noteId}/record`] });
+  // The field catalogue is served as data (/note-tape-fields.json, BD-10); the
+  // panels format values by each field's kind, so they wait for it like data.
+  const { data: tapeFields, error: tapeFieldsError } = useNoteTapeFields();
 
   if (isLoading) {
     return (
@@ -154,6 +149,22 @@ export function NoteRecordPanels({ noteId }: { noteId: string }) {
   if (isError || !data) {
     return <QueryErrorState error={error} onRetry={() => void refetch()} isRetrying={isFetching} title="The note record could not be loaded" className="mb-6" />;
   }
+  if (tapeFieldsError) {
+    return (
+      <div className="mb-6 rounded-md border border-destructive/40 p-4" role="alert" data-testid="note-record-fields-load-error">
+        <p className="text-sm text-destructive">The field list could not be loaded, so the recorded values cannot be shown formatted. Reload the page to try again.</p>
+      </div>
+    );
+  }
+  if (!tapeFields) {
+    return (
+      <div className="mb-6 grid gap-4 lg:grid-cols-2" aria-busy="true" aria-label="Loading the note record">
+        <Skeleton className="h-64" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+  const format: NoteTapeFormat = (field, v) => formatNoteTapeValue(noteTapeFieldByKey(tapeFields), field, v);
   const c = data.collateral;
   const itv = data.investmentToValue;
 
@@ -161,13 +172,13 @@ export function NoteRecordPanels({ noteId }: { noteId: string }) {
 
   return (
     <div className="mb-6 space-y-4">
-      <DisagreementPanel fields={disagreeing} />
+      <DisagreementPanel fields={disagreeing} format={format} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-5" data-testid="note-record-terms">
           <h2 className="mb-1 text-sm font-semibold">Terms as recorded</h2>
           <p className="mb-3 text-xs text-muted-foreground">Each value shows where it came from. Tap a source to see the file row and cell.</p>
           <dl className="divide-y">
-            {data.terms.map((r) => <ValueRow key={r.field} r={r} emptyText="not on record" />)}
+            {data.terms.map((r) => <ValueRow key={r.field} r={r} emptyText="not on record" format={format} />)}
           </dl>
         </Card>
 
@@ -175,7 +186,7 @@ export function NoteRecordPanels({ noteId }: { noteId: string }) {
           <Card className="p-5" data-testid="note-record-yield">
             <h2 className="mb-3 text-sm font-semibold">Yield fields</h2>
             <dl className="divide-y">
-              {data.yieldFields.map((r) => <ValueRow key={r.field} r={r} emptyText="no import has stated this" />)}
+              {data.yieldFields.map((r) => <ValueRow key={r.field} r={r} emptyText="no import has stated this" format={format} />)}
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 py-1.5" data-testid="note-record-itv">
                 <dt className="text-sm text-muted-foreground">Investment-to-value</dt>
                 <dd className="text-sm">

@@ -24,7 +24,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { Verbs } from "@/lib/labels";
 import { ServicingArrangementChoice } from "@/components/notes/ServicingArrangementChoice";
 import { servicingArrangementLabel, type ServicingArrangement } from "@shared/notes/servicingArrangement";
-import { NOTE_TAPE_FIELDS, type NoteTapeFieldKey, type NoteTapeGroup } from "@shared/notes/noteTapeFields";
+import { type NoteTapeFieldKey, type NoteTapeGroup } from "@shared/notes/noteTapeFields";
+import { useNoteTapeFields } from "@/lib/note-tape-fields";
 
 type Mapping = Partial<Record<NoteTapeFieldKey, number | null>>;
 type Overrides = Record<string, Partial<Record<NoteTapeFieldKey, string>>>;
@@ -70,6 +71,9 @@ async function readJson<T>(res: Response): Promise<T> {
 }
 
 export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
+  // The field catalogue is served as data (/note-tape-fields.json, BD-10); the
+  // mapping section below renders its shell plus a loading/error line until it lands.
+  const { data: tapeFields, error: tapeFieldsError } = useNoteTapeFields();
   const [file, setFile] = useState<{ name: string; text: string } | null>(null);
   const [asOf, setAsOf] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -233,11 +237,21 @@ export function NoteTapeImport({ onDone }: { onDone?: () => void }) {
                 </AlertDescription>
               </Alert>
             )}
-            {(Object.keys(GROUP_LABEL) as NoteTapeGroup[]).map((g) => (
+            {tapeFieldsError ? (
+              <Alert variant="destructive" role="alert" data-testid="note-tape-fields-load-error">
+                <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+                <AlertTitle>The field list could not be loaded</AlertTitle>
+                <AlertDescription>
+                  The note-tape field catalogue did not load, so the columns cannot be mapped. Reload the page to try again — nothing has been imported.
+                </AlertDescription>
+              </Alert>
+            ) : !tapeFields ? (
+              <p role="status" className="text-sm text-muted-foreground" data-testid="note-tape-fields-loading">Loading the field list…</p>
+            ) : (Object.keys(GROUP_LABEL) as NoteTapeGroup[]).map((g) => (
               <fieldset key={g} className="space-y-2">
                 <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{GROUP_LABEL[g]}</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {NOTE_TAPE_FIELDS.filter((f) => f.group === g).map((f) => {
+                  {tapeFields.filter((f) => f.group === g).map((f) => {
                     const id = `note-tape-map-${f.key}`;
                     const current = mapping[f.key];
                     return (
