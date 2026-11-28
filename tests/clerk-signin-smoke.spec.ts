@@ -63,7 +63,7 @@ async function signInThroughClerk(page: Page): Promise<void> {
   await emailInput.fill(EMAIL);
 
   const continueBtn = page
-    .locator("button:has-text('Continue'), button[type='submit']")
+    .locator("button:has-text('Continue'):visible, button[type='submit']:visible")
     .first();
   await continueBtn.click();
 
@@ -74,7 +74,7 @@ async function signInThroughClerk(page: Page): Promise<void> {
   await passwordInput.fill(PASSWORD);
 
   const signInBtn = page
-    .locator("button:has-text('Continue'), button:has-text('Sign in'), button[type='submit']")
+    .locator("button:has-text('Continue'):visible, button:has-text('Sign in'):visible, button[type='submit']:visible")
     .first();
   await signInBtn.click();
 
