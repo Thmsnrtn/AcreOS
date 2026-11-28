@@ -26,6 +26,7 @@ import {
 import { db } from "../../../db";
 import { registerTool } from "../tool-registry";
 import { REVENUE_TRIGGER_LADDER } from "../../finance/scaleUpTriggers";
+import { getOpState, upsertOpStateRow } from "../../operationalState";
 import { clock } from "../../../utils/clock";
 
 
@@ -164,17 +165,15 @@ registerTool({
   }),
   async handler(args, ctx) {
     const key = `channel.pause.org_${args.org_id}.${args.channel}`;
-    await db.insert(founderSettings).values({
-      key, value: "true", valueType: "boolean", category: "channel_overrides",
+    await upsertOpStateRow(db, {
+      namespace: "channel_overrides",
+      key, value: "true", valueType: "boolean",
       description: args.reason, updatedBy: ctx.founderUserId,
-    } as any).onConflictDoUpdate({
-      target: founderSettings.key,
-      set: { value: "true", description: args.reason, updatedBy: ctx.founderUserId, updatedAt: clock.now() },
     });
     return {
       artifact: { type: "text", markdown: `Paused \`${args.channel}\` for org ${args.org_id}: ${args.reason}` },
       verifyFn: async () => {
-        const [row] = await db.select().from(founderSettings).where(eq(founderSettings.key, key)).limit(1);
+        const row = await getOpState(db, key);
         return {
           ok: !!row && row.value === "true",
           evidence: row ? `founder_settings.${key}=${row.value}` : "setting not written",
@@ -198,17 +197,15 @@ registerTool({
   }),
   async handler(args, ctx) {
     const key = `channel.throttle.org_${args.org_id}.${args.channel}`;
-    await db.insert(founderSettings).values({
-      key, value: String(args.daily_cap), valueType: "number", category: "channel_overrides",
+    await upsertOpStateRow(db, {
+      namespace: "channel_overrides",
+      key, value: String(args.daily_cap), valueType: "number",
       description: `daily cap=${args.daily_cap}`, updatedBy: ctx.founderUserId,
-    } as any).onConflictDoUpdate({
-      target: founderSettings.key,
-      set: { value: String(args.daily_cap), updatedBy: ctx.founderUserId, updatedAt: clock.now() },
     });
     return {
       artifact: { type: "text", markdown: `Throttled \`${args.channel}\` to ${args.daily_cap}/day for org ${args.org_id}.` },
       verifyFn: async () => {
-        const [row] = await db.select().from(founderSettings).where(eq(founderSettings.key, key)).limit(1);
+        const row = await getOpState(db, key);
         return {
           ok: !!row && row.value === String(args.daily_cap),
           evidence: row ? `${key}=${row.value}` : "setting not written",
