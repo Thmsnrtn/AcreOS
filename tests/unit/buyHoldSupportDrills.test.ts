@@ -347,7 +347,7 @@ const RESOLVER_TOOL_NAMES: string[] = (() => {
   return [...m[1].matchAll(/"([a-z_0-9]+)"/g)].map((x) => x[1]);
 })();
 
-describe("BH drill 3 — capability pin, cured: the resolver subset is the prior set + exactly the four support buy-hold reads (composed with the five support land reads, the four support tax reads and the eight support wholesale reads)", () => {
+describe("BH drill 3 — capability pin, cured: the resolver subset is the prior set + exactly the four support buy-hold reads (composed with the five support land reads, the four support tax reads, the eight support wholesale reads and the three commercial lease views)", () => {
   const BH_TOOLS = [
     "get_rent_roll",
     "get_rental_leases",
@@ -363,13 +363,19 @@ describe("BH drill 3 — capability pin, cured: the resolver subset is the prior
     for (const t of BH_TOOLS) expect(toolsSrc, `chat path is missing ${t}`).toContain(t);
   });
 
-  it("the resolver subset is exactly the prior 13 + the five support land reads + the four support tax reads + the four support buy-hold reads + the eight support wholesale reads, in order", () => {
+  it("the resolver subset is exactly the prior 13 + the five support land reads + the four support tax reads + the four support buy-hold reads + the eight support wholesale reads + the three commercial lease views, in order", () => {
+    // The commercial lease family composes at the same point, after the
+    // eight wholesale reads — the subset is pinned whole so any further
+    // silent addition fails here.
     expect(RESOLVER_TOOL_NAMES).toEqual([
       ...PRIOR_RESOLVER_NAMES.slice(0, 7),
       ...SUPPORT_LAND_READS,
       ...SUPPORT_TAX_READS,
       ...SUPPORT_BH_READS,
       ...SUPPORT_WS_READS,
+      "get_lease_abstract_view",
+      "get_lease_rent_steps_view",
+      "get_lease_cam_status_view",
       ...PRIOR_RESOLVER_NAMES.slice(7),
     ]);
   });

@@ -350,7 +350,7 @@ describe("scenario 4 — unlooked-up fields stay gaps; recorded values pass thro
 });
 
 // LD-DEF-1 — cured: the five land reads have support variants; the write has none.
-describe("capability pin, cured — the resolver subset is the prior set + exactly the five support land reads (LD-DEF-1, composed with the four support tax reads, the four support buy-hold reads and the eight support wholesale reads)", () => {
+describe("capability pin, cured — the resolver subset is the prior set + exactly the five support land reads (LD-DEF-1, composed with the four support tax reads, the four support buy-hold reads, the eight support wholesale reads and the three commercial lease views)", () => {
   const root = resolve(__dirname, "../..");
   const read = (p: string) => stripComments(readFileSync(resolve(root, p), "utf8"));
   const LAND_TOOLS = [
@@ -390,6 +390,11 @@ describe("capability pin, cured — the resolver subset is the prior set + exact
     "get_wholesale_disposition_packet_view",
     "get_wholesale_blasts_view",
   ] as const;
+  const SUPPORT_LEASE_VIEWS = [
+    "get_lease_abstract_view",
+    "get_lease_rent_steps_view",
+    "get_lease_cam_status_view",
+  ] as const;
   const PRIOR_RESOLVER_NAMES = [
     "search_knowledge_base",
     "search_resolved_tickets",
@@ -420,13 +425,14 @@ describe("capability pin, cured — the resolver subset is the prior set + exact
     for (const t of LAND_TOOLS) expect(toolsSrc, `chat path is missing ${t}`).toContain(t);
   });
 
-  it("the resolver subset is exactly the prior 13 + the five support land reads + the four support tax reads + the four support buy-hold reads + the eight support wholesale reads, in order", () => {
+  it("the resolver subset is exactly the prior 13 + the five support land reads + the four support tax reads + the four support buy-hold reads + the eight support wholesale reads + the three commercial lease views, in order", () => {
     expect(RESOLVER_TOOL_NAMES).toEqual([
       ...PRIOR_RESOLVER_NAMES.slice(0, 7),
       ...SUPPORT_LAND_READS,
       ...SUPPORT_TAX_READS,
       ...SUPPORT_BH_READS,
       ...SUPPORT_WS_READS,
+      ...SUPPORT_LEASE_VIEWS,
       ...PRIOR_RESOLVER_NAMES.slice(7),
     ]);
   });
