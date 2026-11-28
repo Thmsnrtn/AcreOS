@@ -29,7 +29,12 @@
  * NO register entry, and must have no variant at any registration
  * point. Removing a name without adding its register entry in the
  * same PR fails (the name becomes unaccounted). Slice 1b dispositions
- * the 45 and shrinks the list to 0.
+ * the 45 and shrinks the list to 0. (Composition cure, 2026-11-27
+ * round: three further read-class tools with no variant and no
+ * truthful exclusion reason — get_rehab_projects, get_rehab_detail,
+ * get_flip_analysis — landed after this gate was authored and are
+ * parked here on the same terms; the pin is 48 until Slice 1b
+ * dispositions all 48 and shrinks the list to 0.)
  *
  * This gate reads purposeLedgerCensus files NEVER. The founder-gated
  * entry for get_notes records the pendency of Founder Decision #1 in
@@ -50,7 +55,7 @@ const REGISTER_FILE = "scripts/resolver-dispositions.json";
  *  only in the same PR that adds/removes an entry of that kind. */
 const EXCLUDED_BASELINE = 1;
 const FOUNDER_GATED_BASELINE = 1;
-const NAMED_LIST_BASELINE = 45;
+const NAMED_LIST_BASELINE = 48;
 
 /** Vacuity floors, seeded at 75% of the live counts at the target base
  *  (C 95 · S 95 · R 34 · PS 91), asserted BEFORE any equality check so a
@@ -59,7 +64,9 @@ const FLOORS = { C: 71, R: 25, S: 71, PS: 68 } as const;
 
 /** The Slice 1b named list: the exact 45 read-class chat tools with no
  *  variant and no exclusion reason at the Slice 1 base, transcribed
- *  verbatim from the coordinator's mechanical derivation. Shrink-only. */
+ *  verbatim from the coordinator's mechanical derivation, plus the 3
+ *  read-class tools parked by the 2026-11-27 composition cure on the
+ *  same terms (48 total). Shrink-only. */
 const SLICE_1B_NAMED_LIST = [
   "get_leads",
   "get_lead_details",
@@ -106,6 +113,9 @@ const SLICE_1B_NAMED_LIST = [
   "list_calendar_events",
   "search_mls_listings",
   "get_mls_comps",
+  "get_rehab_projects",
+  "get_rehab_detail",
+  "get_flip_analysis",
 ] as const;
 
 // ── Derivations (mechanical, from source) ─────────────────────────────
@@ -352,10 +362,10 @@ describe("derivations are whole (vacuity floors before equality)", () => {
     expect(derived.PS.size, `PAUSE_SAFE_SUPPORT_TOOLS yielded ${derived.PS.size}`).toBeGreaterThanOrEqual(FLOORS.PS);
   });
 
-  it("the CAPABILITY_ROWS parse yields 190 rows (95 executeTool / 95 executeSupportTool) on this tree", () => {
-    expect(Object.keys(derived.rows).length).toBe(190);
-    expect(derived.chatRows.size).toBe(95);
-    expect(derived.supRows.size).toBe(95);
+  it("the CAPABILITY_ROWS parse yields 202 rows (104 executeTool / 98 executeSupportTool) on this tree", () => {
+    expect(Object.keys(derived.rows).length).toBe(202);
+    expect(derived.chatRows.size).toBe(104);
+    expect(derived.supRows.size).toBe(98);
   });
 
   it("the two independent derivations of C agree as sets", () => {
