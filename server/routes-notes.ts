@@ -2836,6 +2836,8 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
+        const id = routeParam(req.params.id);
+        if (!isUuidShape(id)) return Errors.notFound(res, "Case");
         const parsed = z.object({
           status: z.enum(LOSS_MIT_STATUS).optional(),
           state: z.string().length(2).optional(),
@@ -2858,7 +2860,7 @@ export function registerNoteRoutes(app: Express): void {
         const [row] = await db
           .update(noteLossMitCases)
           .set(update)
-          .where(and(eq(noteLossMitCases.id, routeParam(req.params.id)), eq(noteLossMitCases.organizationId, orgId)))
+          .where(and(eq(noteLossMitCases.id, id), eq(noteLossMitCases.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Case");
         return res.json({ case: row });
@@ -2877,12 +2879,14 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
+        const id = routeParam(req.params.id);
+        if (!isUuidShape(id)) return Errors.notFound(res, "Case");
         const rows = await db
           .select()
           .from(noteLossMitActions)
           .where(and(
             eq(noteLossMitActions.organizationId, orgId),
-            eq(noteLossMitActions.caseId, routeParam(req.params.id)),
+            eq(noteLossMitActions.caseId, id),
           ))
           .orderBy(desc(noteLossMitActions.performedAt));
         return res.json({ actions: rows });
@@ -2901,6 +2905,8 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
+        const id = routeParam(req.params.id);
+        if (!isUuidShape(id)) return Errors.notFound(res, "Case");
         const parsed = z.object({
           actionType: z.enum(LOSS_MIT_ACTION_TYPES),
           performedAt: z.string().optional(),
@@ -2912,7 +2918,7 @@ export function registerNoteRoutes(app: Express): void {
         const [c] = await db
           .select({ id: noteLossMitCases.id })
           .from(noteLossMitCases)
-          .where(and(eq(noteLossMitCases.id, routeParam(req.params.id)), eq(noteLossMitCases.organizationId, orgId)))
+          .where(and(eq(noteLossMitCases.id, id), eq(noteLossMitCases.organizationId, orgId)))
           .limit(1);
         if (!c) return Errors.notFound(res, "Case");
 
@@ -2922,7 +2928,7 @@ export function registerNoteRoutes(app: Express): void {
           .insert(noteLossMitActions)
           .values({
             organizationId: orgId,
-            caseId: routeParam(req.params.id),
+            caseId: id,
             actionType: parsed.data.actionType,
             performedAt: parsed.data.performedAt ? new Date(parsed.data.performedAt) : clock.now(),
             notes: parsed.data.notes ?? null,
@@ -2938,7 +2944,7 @@ export function registerNoteRoutes(app: Express): void {
           await db
             .update(noteLossMitCases)
             .set({ scraCheckedAt: clock.now(), scraActiveDuty: isActiveDuty, updatedAt: clock.now() })
-            .where(eq(noteLossMitCases.id, routeParam(req.params.id)));
+            .where(eq(noteLossMitCases.id, id));
         }
 
         return res.status(201).json({ action: row });
