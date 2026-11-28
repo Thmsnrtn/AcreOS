@@ -52,20 +52,39 @@ jobs:
             echo "non-docs files present — full run"
           fi
 
-  # ── TypeScript check + ratchets ───────────────────────────────────────────
+  # ── TypeScript check + ratchets ─────────────────────────────────────
   # Runs in parallel with the test shards below (CI efficiency package,
   # 2026-11-11); it used to serialize ahead of them inside the single job.
-  # Since the 2026-11-15 CI dedup this job is the single per-head owner of the
-  # `npm run check` family (ci.yml's duplicate step was removed); ci.yml's
-  # duplicate no-DB test shards were removed too, so this workflow's `test`
-  # job is the suite's single owner.
-  typecheck:
+  # Since the 2026-11-15 CI dedup this job is the single per-head owner of
+  # the `npm run check` family (ci.yml's duplicate step was removed);
+  # ci.yml's duplicate no-DB test shards were removed too, so this
+  # workflow's `test` job is the suite's single owner.
+  # Since the Fly CI expansion (2026-11-27, Option C typecheck-first) this
+  # job runs on an ephemeral Fly runner (performance-4x, spawned per job
+  # by acreos-ci-controller; label fly-ci) instead of the GitHub-hosted
+  # pool — the same move PR-2 (#717) made for test shard 1. It needs no
+  # database, so there is no pg_ctl step; the Report machine step is the
+  # execution proof that the job ran on a Fly machine. Rails: ephemeral
+  # only, no deploy jobs and no secrets on Fly runners, fork PRs excluded
+  # (self-hosted runners never run for forks), deploy workflows stay
+  # GitHub-hosted.
+  typecheck-fly:
     name: TypeScript check + ratchets
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, fly-ci]
+    timeout-minutes: 60
 
     steps:
+      - name: Report machine
+        run: |
+          echo "RUNNER_NAME=${RUNNER_NAME:-unknown}"
+          echo "hostname: $(hostname)"
+          echo "cpus: $(nproc)"
+          grep -E 'MemTotal' /proc/meminfo || true
+          echo "FLY_MACHINE_ID=${FLY_MACHINE_ID:-unset}"
+          echo "FLY_REGION=${FLY_REGION:-unset}"
+
       - uses: actions/checkout@v7
 
       - name: Setup Node.js
