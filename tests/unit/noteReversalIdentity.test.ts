@@ -86,8 +86,12 @@ function res() {
   r.json = (b: Record<string, unknown>) => ((r.body = b), r);
   return r as { statusCode: number; body: Record<string, unknown> } & Record<string, unknown>;
 }
+// The acquired book's note ids are uuids, and POST /api/notes/:id/payments
+// shape-guards the id before any lookup (N-D-DEF-1) — the fixture id must
+// be UUID-shaped or the guard refuses (404) before the logic under test.
+const NOTE_ID = "11111111-1111-4111-8111-111111111111";
 const req = (body: Record<string, unknown>, headers: Record<string, string> = {}) => ({
-  params: { id: "note-1" },
+  params: { id: NOTE_ID },
   body,
   headers,
   organization: { id: 5 },
@@ -96,7 +100,7 @@ const req = (body: Record<string, unknown>, headers: Record<string, string> = {}
 
 const ORIGINAL = {
   id: "pay-orig",
-  noteId: "note-1",
+  noteId: NOTE_ID,
   organizationId: 5,
   paymentType: "regular",
   principalCents: 30_000,
@@ -108,7 +112,7 @@ const ORIGINAL = {
 
 beforeEach(() => {
   S.note = {
-    id: "note-1",
+    id: NOTE_ID,
     currentBalanceCents: 1_000_000,
     unappliedBalanceCents: 0,
     status: "performing",
@@ -192,7 +196,7 @@ describe("an NSF reversal backs out one real payment, once, exactly", () => {
 describe("a retried payment is recorded once", () => {
   it("the same Idempotency-Key finds the recorded payment; the balance does not move again", async () => {
     S.paymentSelects = [[{
-      id: "pay-1", noteId: "note-1", organizationId: 5, operationKey: "op-9", paymentType: "regular", paymentDate: "2026-09-10",
+      id: "pay-1", noteId: NOTE_ID, organizationId: 5, operationKey: "op-9", paymentType: "regular", paymentDate: "2026-09-10",
       principalCents: 30_000, interestCents: 12_000, escrowCents: 0, lateFeeCents: 0, unappliedCents: 0,
     }]];
     const r = res();
@@ -205,7 +209,7 @@ describe("a retried payment is recorded once", () => {
 
   it("the same key with a different amount is refused (409) — nothing is recorded", async () => {
     S.paymentSelects = [[{
-      id: "pay-1", noteId: "note-1", organizationId: 5, operationKey: "op-11", paymentType: "regular", paymentDate: "2026-09-10",
+      id: "pay-1", noteId: NOTE_ID, organizationId: 5, operationKey: "op-11", paymentType: "regular", paymentDate: "2026-09-10",
       principalCents: 30_000, interestCents: 12_000, escrowCents: 0, lateFeeCents: 0, unappliedCents: 0,
     }]];
     const r = res();
@@ -216,7 +220,7 @@ describe("a retried payment is recorded once", () => {
 
   it("the same key naming a DIFFERENT original payment is a different reversal — refused (409), not replayed (audit of 92bf405)", async () => {
     S.paymentSelects = [[{
-      id: "rev-1", noteId: "note-1", organizationId: 5, operationKey: "op-12", paymentType: "nsf_reversal", paymentDate: "2026-09-10",
+      id: "rev-1", noteId: NOTE_ID, organizationId: 5, operationKey: "op-12", paymentType: "nsf_reversal", paymentDate: "2026-09-10",
       originalPaymentId: "pay-A", principalCents: -30_000, interestCents: -12_000, escrowCents: 0, lateFeeCents: 0, unappliedCents: 0,
     }]];
     const r = res();
@@ -230,7 +234,7 @@ describe("a retried payment is recorded once", () => {
 
   it("the same key naming the SAME original is the retry — replayed", async () => {
     S.paymentSelects = [[{
-      id: "rev-1", noteId: "note-1", organizationId: 5, operationKey: "op-13", paymentType: "nsf_reversal", paymentDate: "2026-09-10",
+      id: "rev-1", noteId: NOTE_ID, organizationId: 5, operationKey: "op-13", paymentType: "nsf_reversal", paymentDate: "2026-09-10",
       originalPaymentId: "pay-A", principalCents: -30_000, interestCents: -12_000, escrowCents: 0, lateFeeCents: 0, unappliedCents: 0,
     }]];
     const r = res();
