@@ -10461,6 +10461,8 @@ export const founderSettings = pgTable("founder_settings", {
 
 export type FounderSetting = typeof founderSettings.$inferSelect;
 
+export * from "./schema/operational-state";
+
 // Strategic proposals — proactive "what should we do this month"
 // layer. Agents generate weekly proposals; a monthly synthesis step
 // picks the top 3-5 and stamps them with a monthKey for the founder
