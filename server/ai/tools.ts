@@ -1602,12 +1602,18 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   // allowlist that says otherwise if that ever changes.
   "search_mls_listings",
   "get_mls_comps",
-  // Org memory — conversation-scoped notes, not actions on the world
-  "remember_fact",
+  // Org memory reads — conversation-scoped notes, not actions on the world.
+  // `remember_fact` left this list in the PF-11 Class-D cure (2026-11-28):
+  // it inserts a paxMemory row, and pause-safe must mean no storage
+  // mutation (spec §3d — the same rule that removed draft_offer on
+  // 2026-09-02). Its BOOKKEEPING exemption in paxPauseToolGate.test.ts
+  // was deleted with it.
   "recall_facts",
-  // Sub-agents recurse through executeTool, so their side-effecting calls hit
-  // this same gate with the same org
-  "spawn_subagent",
+  // `spawn_subagent` left this list in the PF-11 Class-D cure (2026-11-28):
+  // dispatching a nested agent loop is an action, not a look or a draft —
+  // a paused Pax must not start new agent work. (Sub-agents still recurse
+  // through executeTool, so their side-effecting calls hit this same gate
+  // with the same org when a sub-agent is legitimately running.)
   // Account reads (Stage 2): balance, prices, campaigns, inbox, team, limits,
   // sending identity, product facts — reads only.
   "get_credits",

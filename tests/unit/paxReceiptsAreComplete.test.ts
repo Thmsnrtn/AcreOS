@@ -160,6 +160,12 @@ vi.mock("../../server/services/rentalEvents", () => ({
   emitRentReceived: vi.fn(),
 }));
 vi.mock("../../server/websocket", () => ({ wsServer: { broadcastToOrg: vi.fn() } }));
+// spawn_subagent (PF-11 Class-D cure, 2026-11-28) dispatches the executive's
+// processChat; stubbed at that seam — this population proves the receipt the
+// dispatch leaves, not the sub-agent loop itself.
+vi.mock("../../server/ai/executive", () => ({
+  processChat: vi.fn(async () => ({ response: "stub sub-agent reply", conversationId: 5 })),
+}));
 vi.mock("../../server/services/approvalKernel", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../server/services/approvalKernel")>();
   return { ...actual, proposePendingAction: vi.fn(async (i: any) => ({ id: 1, ...i })) };
@@ -260,6 +266,12 @@ const ARGS: Record<string, Record<string, unknown>> = {
   mark_land_listing_listed: { listing_id: 9 },
   record_tenant_sales_report: { lease_id: "6f1c1c1e-2b7a-4c1d-9a55-0e0e0e0e0e0f", period_start: "2026-01-01", period_end: "2026-01-31", gross_sales_cents: 12500000 },
   schedule_followup: { title: "Follow up", entity_type: "lead", entity_id: 42, due_date: "2026-09-10" },
+  // PF-11 Class-D cure (2026-11-28): remember_fact (a paxMemory insert) and
+  // spawn_subagent (a nested agent dispatch) joined this population when
+  // they were reclassified write-class — neither is a look or a draft, so
+  // each now owes the generic receipt this suite proves.
+  remember_fact: { fact: "The seller prefers email over calls", category: "insight" },
+  spawn_subagent: { prompt: "Research the parcel's zoning", role: "research" },
   schedule_follow_up: { entityType: "lead", entityId: 42, note: "Call back", followUpDate: "2026-09-10" },
   // create_calendar_event / trigger_zapier / trigger_make left this population
   // on 2026-10-20: they POST outward, so they are approval-required sends now

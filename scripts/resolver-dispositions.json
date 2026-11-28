@@ -254,6 +254,14 @@
     {
       "tool": "record_exit_facts",
       "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "remember_fact",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "spawn_subagent",
+      "disposition": "write-pinned-absent"
     }
   ],
   "supportNative": [
