@@ -12,10 +12,10 @@ describe.runIf(realDbAvailable)("decisions inbox throttle on PostgreSQL", () => 
 
   afterAll(async () => {
     const { db } = await import("../../server/db");
-    const { decisionsInboxItems, founderSettings } = await import("@shared/schema");
+    const { decisionsInboxItems, operationalState } = await import("@shared/schema");
     const { eq, like } = await import("drizzle-orm");
     await db.delete(decisionsInboxItems).where(eq(decisionsInboxItems.ownerAgentCodename, ownerCodename));
-    await db.delete(founderSettings).where(like(founderSettings.key, `%${producer}%`));
+    await db.delete(operationalState).where(like(operationalState.key, `%${producer}%`));
   });
 
   it("concurrent raiseIfAllowed for the same subject yields exactly one card (advisory-lock race)", async () => {
@@ -37,7 +37,7 @@ describe.runIf(realDbAvailable)("decisions inbox throttle on PostgreSQL", () => 
 
   it("state survives writes to decisions_inbox_items: closing the prior card does not reset it", async () => {
     const { db } = await import("../../server/db");
-    const { decisionsInboxItems, founderSettings } = await import("@shared/schema");
+    const { decisionsInboxItems, operationalState } = await import("@shared/schema");
     const { eq, like } = await import("drizzle-orm");
     const { raiseIfAllowed, hash16, SUBJECT_KEY_PREFIX } = await import("../../server/services/decisionsInboxThrottle");
     const producer2 = `${producer}_survive`; // own producer: the per-producer daily cap is 3
@@ -57,7 +57,7 @@ describe.runIf(realDbAvailable)("decisions inbox throttle on PostgreSQL", () => 
     const first = await raiseIfAllowed(input, card);
     expect(first.inserted).toBe(true);
     const key = `${SUBJECT_KEY_PREFIX}${producer2}.${hash16("survives-subject")}`;
-    const [before] = await db.select().from(founderSettings).where(eq(founderSettings.key, key));
+    const [before] = await db.select().from(operationalState).where(eq(operationalState.key, key));
     expect(before).toBeDefined();
 
     // soft-purge equivalent + a resolution on the prior card
@@ -69,16 +69,16 @@ describe.runIf(realDbAvailable)("decisions inbox throttle on PostgreSQL", () => 
     }
     const rows = await db.select().from(decisionsInboxItems).where(eq(decisionsInboxItems.ownerAgentCodename, ownerCodename));
     expect(rows).toHaveLength(1);
-    const [after] = await db.select().from(founderSettings).where(eq(founderSettings.key, key));
+    const [after] = await db.select().from(operationalState).where(eq(operationalState.key, key));
     expect(after.value).toBe(before.value);
     expect(
-      (await db.select().from(founderSettings).where(like(founderSettings.key, `${SUBJECT_KEY_PREFIX}${producer2}.%`))).length,
+      (await db.select().from(operationalState).where(like(operationalState.key, `${SUBJECT_KEY_PREFIX}${producer2}.%`))).length,
     ).toBeGreaterThanOrEqual(1);
   });
 
   it("writes through the direct upsert shape: a second raise updates the row, never duplicates (unique on key)", async () => {
     const { db } = await import("../../server/db");
-    const { founderSettings } = await import("@shared/schema");
+    const { operationalState } = await import("@shared/schema");
     const { eq, like } = await import("drizzle-orm");
     const { raiseIfAllowed, hash16, SUBJECT_KEY_PREFIX, DAY_KEY_PREFIX } = await import(
       "../../server/services/decisionsInboxThrottle"
@@ -89,20 +89,20 @@ describe.runIf(realDbAvailable)("decisions inbox throttle on PostgreSQL", () => 
     const base = { producer: producer3, subjectKey, class: "standard" as const };
 
     await raiseIfAllowed({ ...base, conditionKey: "A" }, async () => undefined);
-    const [r1] = await db.select().from(founderSettings).where(eq(founderSettings.key, key));
+    const [r1] = await db.select().from(operationalState).where(eq(operationalState.key, key));
     expect(r1.valueType).toBe("json");
-    expect(r1.category).toBe("general");
+    expect(r1.namespace).toBe("inbox_throttle");
     expect(r1.updatedBy).toBe("decisions-inbox-throttle");
     expect(r1.description ?? "").toContain(producer3);
     expect(JSON.parse(r1.value as string)).toMatchObject({ n: 1 });
 
     const second = await raiseIfAllowed({ ...base, conditionKey: "B" }, async () => undefined);
     expect(second.verdict.reason).toBe("condition_changed");
-    const sameKey = await db.select().from(founderSettings).where(eq(founderSettings.key, key));
+    const sameKey = await db.select().from(operationalState).where(eq(operationalState.key, key));
     expect(sameKey).toHaveLength(1);
     expect(JSON.parse(sameKey[0].value as string)).toMatchObject({ n: 2 });
 
-    const dayRows = await db.select().from(founderSettings).where(like(founderSettings.key, `${DAY_KEY_PREFIX}${producer3}.%`));
+    const dayRows = await db.select().from(operationalState).where(like(operationalState.key, `${DAY_KEY_PREFIX}${producer3}.%`));
     expect(dayRows).toHaveLength(1); // one counter row per producer per UTC day (test does not span midnight)
     expect(JSON.parse(dayRows[0].value as string).raised).toBeGreaterThanOrEqual(2);
   });
