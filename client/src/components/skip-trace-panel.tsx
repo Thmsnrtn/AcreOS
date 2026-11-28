@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -6,7 +6,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SKIP_TRACE_PURPOSES, MIN_JUSTIFICATION_CHARS } from "@/lib/skip-trace-purposes";
+import {
+  ShieldCheck,
   Search,
   Phone,
   Mail,
@@ -46,6 +57,12 @@ type SkipTrace = {
 export function SkipTracePanel({ lead }: { lead: Lead }) {
   const { toast } = useToast();
   const [isPolling, setIsPolling] = useState(false);
+  const [purposeOfUse, setPurposeOfUse] = useState("");
+  const [justification, setJustification] = useState("");
+  const purposeSelectId = useId();
+  const justificationInputId = useId();
+  const purposeReady =
+    purposeOfUse !== "" && justification.trim().length >= MIN_JUSTIFICATION_CHARS;
 
   const { data: skipTrace, isLoading, refetch } = useQuery<SkipTrace | null>({
     queryKey: ['/api/skip-traces/lead', lead.id],
@@ -54,10 +71,27 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
   // allow-no-invalidation: starts an async trace; the polling query (setIsPolling) picks up results
   const runSkipTrace = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest('POST', '/api/skip-traces', { leadId: lead.id });
+      // The server's FCRA gate refuses without a permissible purpose and
+      // justification; we supply what the operator chose, never a default.
+      const res = await apiRequest('POST', '/api/skip-traces', {
+        leadId: lead.id,
+        purposeOfUse,
+        justification: justification.trim(),
+      });
       return res;
     },
-    onSuccess: () => {
+    onSuccess: async (res) => {
+      // The server answers 200 with status "unavailable" when no provider is
+      // connected — say so rather than claiming a trace started.
+      const body = await res.json().catch(() => null);
+      if (body?.status === "unavailable") {
+        toast({
+          title: "Skip tracing isn't available",
+          description: "No skip-trace provider is connected to this account. Nothing was charged.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({ title: "Skip trace started", description: "Processing your request..." });
       setIsPolling(true);
     },
@@ -96,6 +130,46 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
     }
   };
 
+  const purposeFields = (
+    <div className="rounded-md border p-3 space-y-3 text-left" data-testid="skip-trace-panel-fcra-purpose">
+      <div className="flex items-start gap-2">
+        <ShieldCheck className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" aria-hidden="true" />
+        <p className="text-xs text-muted-foreground">
+          Federal law (FCRA §1681b) permits these lookups only for a permissible
+          purpose. Your purpose and justification are recorded on every trace,
+          and a current annual FCRA attestation is required.
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={purposeSelectId}>Permissible purpose</Label>
+        <Select value={purposeOfUse} onValueChange={setPurposeOfUse}>
+          <SelectTrigger id={purposeSelectId} data-testid="select-skip-trace-panel-purpose">
+            <SelectValue placeholder="Select a purpose…" />
+          </SelectTrigger>
+          <SelectContent>
+            {SKIP_TRACE_PURPOSES.map((p) => (
+              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={justificationInputId}>Justification</Label>
+        <Textarea
+          id={justificationInputId}
+          rows={2}
+          placeholder="Why this lookup is permissible"
+          value={justification}
+          onChange={(e) => setJustification(e.target.value)}
+          data-testid="input-skip-trace-panel-justification"
+        />
+        <p className="text-xs text-muted-foreground">
+          At least {MIN_JUSTIFICATION_CHARS} characters — kept as the audit trail for this trace.
+        </p>
+      </div>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <Card className="glass-panel">
@@ -128,9 +202,10 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
               <DollarSign className="w-4 h-4" />
               <span>Cost: $0.50 per trace</span>
             </div>
-            <Button 
-              onClick={() => runSkipTrace.mutate()} 
-              disabled={runSkipTrace.isPending}
+            <div className="mb-4">{purposeFields}</div>
+            <Button
+              onClick={() => runSkipTrace.mutate()}
+              disabled={runSkipTrace.isPending || !purposeReady}
               data-testid="button-run-skip-trace"
             >
               {runSkipTrace.isPending ? (
@@ -240,12 +315,13 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
               )}
             </div>
 
-            <Button 
-              variant="outline" 
-              size="sm" 
+            {purposeFields}
+            <Button
+              variant="outline"
+              size="sm"
               className="w-full"
-              onClick={() => runSkipTrace.mutate()} 
-              disabled={runSkipTrace.isPending}
+              onClick={() => runSkipTrace.mutate()}
+              disabled={runSkipTrace.isPending || !purposeReady}
               data-testid="button-refresh-skip-trace"
             >
               <RefreshCw className="w-4 h-4 mr-2" /> Run New Skip Trace
@@ -257,10 +333,11 @@ export function SkipTracePanel({ lead }: { lead: Lead }) {
             <p className="text-sm text-muted-foreground mb-4">
               {skipTrace.status === 'no_results' ? 'No results found for this lead.' : 'Skip trace failed. Please try again.'}
             </p>
-            <Button 
+            <div className="mb-4">{purposeFields}</div>
+            <Button
               variant="outline"
-              onClick={() => runSkipTrace.mutate()} 
-              disabled={runSkipTrace.isPending}
+              onClick={() => runSkipTrace.mutate()}
+              disabled={runSkipTrace.isPending || !purposeReady}
               data-testid="button-retry-skip-trace"
             >
               <RefreshCw className="w-4 h-4 mr-2" /> Try Again
