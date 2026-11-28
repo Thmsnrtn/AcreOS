@@ -1,17 +1,22 @@
 /**
  * Today vertical-surfaces registry (FW-10).
  *
- * Drives the single "Your surfaces" card on /today. Each entry maps a
- * vertical key (businessType + investorType combinations) to the title,
- * tagline, and cluster of links the operator hits in their morning loop.
+ * Maps a vertical fingerprint (businessType + org investorType) to the
+ * quick links that vertical's operator uses in their morning loop. Rendered
+ * by `components/today/VerticalSurfaces.tsx` — on PHONES ONLY. Below the md
+ * breakpoint the sidebar (and with it every vertical's nav module) is not
+ * rendered and the More drawer is a fixed list, so these links are the only
+ * nav path a phone user has to their vertical's pages. On tablet/desktop the
+ * same links are already in the sidebar module for that vertical, so Today
+ * shows nothing there (the desktop "Your surfaces" card was removed as
+ * banner sprawl on 2026-05-11, d21c5fc8).
  *
- * Adding a vertical: drop a new entry. The /today renderer iterates and
- * picks all matching verticals in a stable priority order so an org
- * that's BOTH (e.g. land + note investor) sees both clusters in one
- * scannable card instead of two stacked banners.
+ * Every link must be a real customer page that the desktop nav also offers
+ * for the same fingerprint — tests/unit/todayVerticalSurfacesLinks.test.ts
+ * walks the router and the sidebar's NAV_MODULES to hold that.
  */
 
-export interface VerticalSurfaceLink {
+interface VerticalSurfaceLink {
   label: string;
   href: string;
 }
@@ -29,7 +34,7 @@ export interface VerticalSurfaceCluster {
   priority: number;
 }
 
-export interface VerticalSurfacesInput {
+interface VerticalSurfacesInput {
   businessType: string | null | undefined;
   investorType: string | null | undefined;
 }
@@ -46,7 +51,7 @@ const REGISTRY: Array<{
       description: "Buyer blasts, EMD timer, double-close, assignment legality — tuned for transactional wholesalers (no inventory, no cash flow).",
       priority: 10,
       links: [
-        { label: "Buyer blasts", href: "/buyer-blasts" },
+        { label: "Buyer blasts", href: "/campaigns?channel=buyer-blasts" },
         { label: "EMD", href: "/earnest-money" },
         { label: "Double-close", href: "/double-close" },
         { label: "State rules", href: "/wholesaler-state-rules" },
@@ -66,15 +71,16 @@ const REGISTRY: Array<{
     cluster: {
       id: "landlord",
       title: "Landlord surfaces",
-      description: "Tenants, leases, rent roll, maintenance.",
+      description: "Rent roll, tenants, leases and maintenance.",
       priority: 20,
       links: [
         { label: "Rent roll", href: "/rent-roll" },
-        { label: "Maintenance", href: "/maintenance" },
+        { label: "Tenants", href: "/tenants" },
         { label: "Leases", href: "/leases" },
         // No Analytics link (nav honesty, 2026-11-06): its route only redirects
         // to the generic analytics page, which shows none of the rental
         // metrics the card promised. Restore it with the page that earns it.
+        { label: "Maintenance", href: "/maintenance" },
       ],
     },
   },
@@ -116,8 +122,8 @@ const REGISTRY: Array<{
       links: [
         { label: "Redemption clock", href: "/redemption-clock" },
         { label: "Auction worksheet", href: "/auction-worksheet" },
-        { label: "Counties", href: "/counties" },
         { label: "State rules", href: "/state-rules" },
+        { label: "Quiet title", href: "/quiet-title" },
       ],
     },
   },
@@ -227,5 +233,15 @@ export function resolveVerticalSurfaces(input: VerticalSurfacesInput): VerticalS
     .sort((a, b) => a.priority - b.priority);
 }
 
-// Exported for test introspection only.
+/**
+ * Clusters declared above that Today does NOT render, each with its reason.
+ * A held cluster is one another live session owns; it lights up by deleting
+ * its line here (the link tests then govern it like every other cluster).
+ */
+export const TODAY_HELD_CLUSTERS: Readonly<Record<string, string>> = {
+  flipper:
+    "Fix-and-flip lane (live; #465/#467 merged) shaped this vertical's own dashboard widget in type-specific-widgets.tsx, which nothing mounts; where flipper attention lives on Today is that lane's call.",
+};
+
+// Exported for test introspection only (the link tests read every entry).
 export const _VERTICAL_SURFACES_REGISTRY = REGISTRY;
