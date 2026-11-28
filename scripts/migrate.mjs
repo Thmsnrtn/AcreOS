@@ -16573,6 +16573,50 @@ ON CONFLICT ("key") DO NOTHING`,
   `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
  VALUES ('cause_giving', 'Cause Giving', 'Quarterly donation of 1% of Net Operating Profit to the curated charity ballot, allocated by member tally. OFF until the activation checklist completes and the founder flips it.', false, 'off', '{}'::jsonb, '[]'::jsonb)
  ON CONFLICT ("key") DO NOTHING`,
+  // 0315 — P12-1c slice 1c-1: the operational_state table, the shared KV
+  // destination for the five direct-table subsystems on founder_settings
+  // (gate watcher, inbox throttle, LQ22 tripwire, channel overrides).
+  // Creates the table and copies live rows non-destructively; nothing
+  // reads the table yet — readers/writers switch in slices 1c-2…1c-5.
+  // Mirrors migrations/0315_operational_state.sql.
+  `CREATE TABLE IF NOT EXISTS "operational_state" (
+  "id" serial PRIMARY KEY,
+  "namespace" text NOT NULL,
+  "key" text NOT NULL,
+  "value" text NOT NULL,
+  "value_type" text NOT NULL DEFAULT 'string',
+  "description" text,
+  "updated_at" timestamp NOT NULL DEFAULT now(),
+  "updated_by" text,
+  CONSTRAINT "operational_state_namespace_key_unique" UNIQUE ("namespace", "key")
+)`,
+  `CREATE INDEX IF NOT EXISTS "operational_state_key_idx" ON "operational_state" ("key")`,
+  `INSERT INTO "operational_state" ("namespace", "key", "value", "value_type", "description", "updated_at", "updated_by")
+SELECT
+  CASE
+    WHEN "key" LIKE 'gate_watcher.state.%' THEN 'gate_watcher'
+    WHEN "key" LIKE 'inbox_throttle.%' THEN 'inbox_throttle'
+    WHEN "key" LIKE 'lq22_tripwire.%' THEN 'lq22_tripwire'
+    WHEN "key" LIKE 'channel.pause.%' THEN 'channel_overrides'
+    WHEN "key" LIKE 'channel.throttle.%' THEN 'channel_overrides'
+    WHEN "key" LIKE 'founder.org_%.channel_pause.%' THEN 'channel_overrides'
+    WHEN "key" LIKE 'founder.org_%.channel_throttle.%' THEN 'channel_overrides'
+  END,
+  "key",
+  "value",
+  "value_type",
+  "description",
+  "updated_at",
+  "updated_by"
+FROM "founder_settings"
+WHERE "key" LIKE 'gate_watcher.state.%'
+   OR "key" LIKE 'inbox_throttle.%'
+   OR "key" LIKE 'lq22_tripwire.%'
+   OR "key" LIKE 'channel.pause.%'
+   OR "key" LIKE 'channel.throttle.%'
+   OR "key" LIKE 'founder.org_%.channel_pause.%'
+   OR "key" LIKE 'founder.org_%.channel_throttle.%'
+ON CONFLICT ("namespace", "key") DO NOTHING`,
 ];
 
 // The statement set this run executes. Default: everything (the production

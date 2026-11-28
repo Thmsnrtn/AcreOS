@@ -186,6 +186,39 @@ describe("wiring: the monitor watches the real gate", () => {
     expect(isFrozenRoute(LQ22_FROZEN_ROUTE)).toBe(true);
   });
 
+  it("the persist path dual-writes both stores with the same key and value (P12-1c-4)", () => {
+    // Source pin, same idiom as the requireLadderFlag assertions below:
+    // the persist block's shape is a fact that may only change
+    // deliberately (the legacy half is removed by the F1 follow-up
+    // micro-PR, which must update this pin when it lands).
+    const src = readFileSync(
+      resolve(__dirname, "../../server/services/lq22Tripwire.ts"),
+      "utf8",
+    );
+    // One shared value: the same JSON.stringify(report) bytes go to both.
+    expect(src).toContain("const value = JSON.stringify(report);");
+    // Primary write: operational_state via the 1c-1 service, namespace
+    // lq22_tripwire, the unchanged key, the shared value.
+    const primaryAt = src.indexOf("await upsertOpStateRow(db, {");
+    expect(primaryAt).toBeGreaterThan(-1);
+    const primary = src.slice(primaryAt, src.indexOf("});", primaryAt));
+    expect(primary).toContain('namespace: "lq22_tripwire"');
+    expect(primary).toContain("key: LQ22_SETTINGS_KEY");
+    expect(primary).toContain("value,");
+    expect(primary).toContain('valueType: "json"');
+    expect(primary).toContain('updatedBy: "lq22-tripwire"');
+    // Legacy dual-write: founder_settings insert under the same key and
+    // the same shared value, after the primary write.
+    const legacyAt = src.indexOf(".insert(founderSettings)");
+    expect(legacyAt).toBeGreaterThan(primaryAt);
+    const legacy = src.slice(legacyAt, src.indexOf(";", legacyAt));
+    expect(legacy).toContain("key: LQ22_SETTINGS_KEY");
+    expect(legacy).toContain("value,");
+    expect(legacy).toContain('updatedBy: "lq22-tripwire"');
+    // Marked as the removable dual-write, not a permanent second store.
+    expect(src).toContain("P12-1c-4 DUAL-WRITE");
+  });
+
   it("the investor-network API mounts still sit behind requireLadderFlag", () => {
     const epic = readFileSync(
       resolve(__dirname, "../../server/routes-epic-services.ts"),
