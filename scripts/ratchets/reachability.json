@@ -32,6 +32,16 @@
     },
     {
       "kind": "export",
+      "id": "shared/sms/a2p10dlc.ts::A2P_10DLC_STEPS",
+      "reason": "SERVED-DATA SOURCE OF TRUTH (bundle diet cure BD-10, 2026-11-27). The A2P 10DLC registration step table: the module's logic stays production-reached (a2pSendVerdict / normaliseTwilioBrandStatus / normaliseTwilioCampaignStatus / numberKindOf via server/services/sms/a2pRegistration.ts; A2P_STATUSES via server/routes-growth.ts), but the client deliberately does NOT import the steps — they ship inside the static asset /a2p-10dlc.json, generated verbatim from this export together with A2P_STATUSES and A2P_SOURCE_LABELS, and the registration guide renders the loaded asset via useA2p10dlc (staticDataServedAsData.test.ts pins asset == these exports, byte-exact). Exported so the generator one-liner and that pin can read it. REVOCATION: if a production module imports A2P_10DLC_STEPS directly, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "shared/sms/a2p10dlc.ts::A2P_SOURCE_LABELS",
+      "reason": "SERVED-DATA SOURCE OF TRUTH (bundle diet cure BD-10, 2026-11-27). The A2P status-source label table: the module's logic stays production-reached (a2pSendVerdict / normaliseTwilioBrandStatus / normaliseTwilioCampaignStatus / numberKindOf via server/services/sms/a2pRegistration.ts; A2P_STATUSES via server/routes-growth.ts), but the client deliberately does NOT import the labels — they ship inside the static asset /a2p-10dlc.json, generated verbatim from this export together with A2P_STATUSES and A2P_10DLC_STEPS, and the registration guide renders the loaded asset via useA2p10dlc (staticDataServedAsData.test.ts pins asset == these exports, byte-exact). Exported so the generator one-liner and that pin can read it. REVOCATION: if a production module imports A2P_SOURCE_LABELS directly, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/mail/letterRender.ts::rendersInFlight",
       "reason": "TEST-INTROSPECTION SEAM (house mail audit, 2026-10-18). How many letter renders are running; houseLetterRenderReal.test.ts samples it during a burst to prove the global semaphore holds renders to MAX_CONCURRENT_RENDERS. REVOCATION: if a production module imports it, remove this entry."
     },
