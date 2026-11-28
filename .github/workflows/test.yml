@@ -107,127 +107,40 @@ jobs:
       - name: TypeScript check + ratchets
         run: npm run check
 
-  # ── Tests, sharded ────────────────────────────────────────────────────────
+  # ── Tests, sharded — all three shards on Fly (Fly CI expansion) ─────
   # The full suite, partitioned by test file across three runners via
   # vitest's --shard (CI efficiency package, 2026-11-11; measured 32–45 min
   # as one serial job). The union of the three shards is the full suite;
-  # nothing is dropped. Each shard job provisions its OWN pgvector service
-  # and builds the schema in it, so the real-database suites get a private
-  # database per shard — today every test file shares ONE database inside a
-  # single job, in parallel forks, so a per-shard database removes
-  # cross-file interference rather than adding any.
-  test:
-    name: TypeScript + Tests (shard ${{ matrix.shard }}/3)
-    needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [2, 3]
-
-    services:
-      postgres:
-        # pgvector, not vanilla postgres:16. shared/schema.ts declares
-        # solene_embedded_records with a `vector(1024)` column, so on an image
-        # without the extension that CREATE TABLE fails and the schema this
-        # repository builds is genuinely missing a table. Found on the first CI
-        # run of the schema gate (2026-09-04): the gate was right, the image was
-        # short. Same postgres 16, same POSTGRES_* env, plus the extension.
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: acreos
-          POSTGRES_PASSWORD: acreos
-          POSTGRES_DB: acreos_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
-      # The tests that read Postgres itself (tests/helpers/realDb.ts) run against
-      # the schema this job builds, and must not skip here.
-      ACREOS_REAL_DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
-      ACREOS_REQUIRE_REAL_DB: "1"
-      SESSION_SECRET: test-session-secret-at-least-32-characters-long
-      APP_URL: http://localhost:5000
-      NODE_ENV: test
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      # Build the schema from this repository and gate on the result. This
-      # replaces `npx drizzle-kit migrate` + `continue-on-error: true`, which
-      # could never have worked: drizzle.config.ts records that
-      # migrations/meta/_journal.json was deleted on 2026-05-11, so the
-      # migrator has no journal to read, and continue-on-error hid it.
-      #
-      # The script runs migrations/*.sql, then `node scripts/migrate.mjs` (the
-      # literal Fly release_command), then its --dry-run, then the
-      # declared-vs-built column mirror. ~20s from an empty database.
-      #
-      # The first execution of this path, 2026-09-04, found 37 columns declared
-      # in shared/schema.ts that no DDL in the repo created — enough that
-      # `db.select().from(properties)` failed on the database it built.
-      # The round trip (sub-check 10/10) dumps and restores with the client
-      # tools of the SERVER's major version (scripts/lib/pg-client-for-server.sh)
-      # and refuses a mismatch. The runner image's own client tools are not
-      # pinned and moved past the pg16 service on 2026-10-26 (pg_restore >= 17
-      # sends SET transaction_timeout, which 16 rejects), so install 16's.
-      - name: Install the PostgreSQL 16 client tools the service needs
-        run: |
-          sudo apt-get update -qq
-          if ! sudo apt-get install -y -qq --no-install-recommends postgresql-client-16; then
-            # Not in this image's repositories: add the PostgreSQL project's
-            # own apt repository (PGDG) and retry.
-            sudo apt-get install -y -qq --no-install-recommends postgresql-common
-            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-            sudo apt-get install -y -qq --no-install-recommends postgresql-client-16
-          fi
-          /usr/lib/postgresql/16/bin/pg_dump --version
-          /usr/lib/postgresql/16/bin/pg_restore --version
-
-      - name: Build the schema from this repo and verify it
-        run: npm run db:build-from-repo
-
-      # Plain `vitest run` — identical to the deploy gate's blocking test step.
-      # No `--coverage` here: coverage v8 instrumentation is heavier (OOM risk)
-      # and its threshold gate is report-only, owned by ci.yml's Coverage step.
-      - name: Run tests
-        run: npx vitest run --reporter=verbose --shard=${{ matrix.shard }}/3
-        env:
-          CI: true
-
-  # ── Tests, shard 1/3 on Fly (PR-2, Fly CI rollout) ───────────────────────
-  # Shard 1 runs on an ephemeral Fly runner (performance-4x, spawned per job
-  # by acreos-ci-controller; label fly-ci) instead of the GitHub-hosted pool:
-  # queue independence from hosted-pool stalls at hosted-median duration
-  # (Option B probe, run 45264239349: queue-to-done 18m46s, vitest 9m11s).
-  # No `services:` block: a Fly Machine has no Docker daemon, so the job
-  # starts the PostgreSQL 16 + pgvector cluster baked into the runner image
-  # (the probe job's steps, verbatim). Rails: ephemeral only, no deploy
-  # jobs and no secrets beyond this workflow's existing test env on Fly
-  # runners, fork PRs excluded (self-hosted runners never run for forks),
-  # deploy workflows stay GitHub-hosted.
+  # nothing is dropped. Each shard job provisions its OWN database and
+  # builds the schema in it, so the real-database suites get a private
+  # database per shard — every test file sharing ONE database inside a
+  # single job, in parallel forks, would keep cross-file interference a
+  # per-shard database removes.
+  # Shard 1 moved to an ephemeral Fly runner in PR-2 (#717, Option B
+  # probe: queue-to-done at hosted-median parity with a deterministic
+  # ~23 s queue); the Fly CI expansion (2026-11-27) moves shards 2 and 3
+  # onto the same rails, and the GitHub-hosted matrix job is removed.
+  # No `services:` block: a Fly Machine has no Docker daemon, so each job
+  # starts the PostgreSQL 16 + pgvector cluster baked into the runner
+  # image (pgvector, not vanilla postgres:16 — shared/schema.ts declares
+  # solene_embedded_records with a `vector(1024)` column, so on an image
+  # without the extension that CREATE TABLE fails and the schema this
+  # repository builds is genuinely missing a table). The baked image also
+  # carries the PostgreSQL 16 client tools, so the hosted job's apt
+  # install step is gone. Rails: ephemeral only, no deploy jobs and no
+  # secrets beyond this workflow's existing test env on Fly runners, fork
+  # PRs excluded (self-hosted runners never run for forks), deploy
+  # workflows stay GitHub-hosted.
   test-fly:
-    name: TypeScript + Tests (shard 1/3)
+    name: TypeScript + Tests (shard ${{ matrix.shard }}/3)
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: [self-hosted, fly-ci]
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
 
     env:
       DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
@@ -269,10 +182,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Build the schema from this repository and gate on the result. This
+      # replaces `npx drizzle-kit migrate` + `continue-on-error: true`, which
+      # could never have worked: drizzle.config.ts records that
+      # migrations/meta/_journal.json was deleted on 2026-05-11, so the
+      # migrator has no journal to read, and continue-on-error hid it.
+      #
+      # The script runs migrations/*.sql, then `node scripts/migrate.mjs` (the
+      # literal Fly release_command), then its --dry-run, then the
+      # declared-vs-built column mirror. ~20s from an empty database.
+      #
+      # The first execution of this path, 2026-09-04, found 37 columns declared
+      # in shared/schema.ts that no DDL in the repo created — enough that
+      # `db.select().from(properties)` failed on the database it built.
+      # The round trip (sub-check 10/10) dumps and restores with the client
+      # tools of the SERVER's major version (scripts/lib/pg-client-for-server.sh)
+      # and refuses a mismatch; the runner image bakes the PostgreSQL 16
+      # tools, so the version pairing holds by construction.
       - name: Build the schema from this repo and verify it
         run: npm run db:build-from-repo
 
-      - name: Run tests (shard 1/3)
-        run: npx vitest run --reporter=verbose --shard=1/3
+      # Plain `vitest run` — identical to the deploy gate's blocking test step.
+      # No `--coverage` here: coverage v8 instrumentation is heavier (OOM risk)
+      # and its threshold gate is report-only, owned by ci.yml's Coverage step.
+      - name: Run tests (shard ${{ matrix.shard }}/3)
+        run: npx vitest run --reporter=verbose --shard=${{ matrix.shard }}/3
         env:
           CI: true
