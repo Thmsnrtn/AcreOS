@@ -55,7 +55,7 @@ const REGISTER_FILE = "scripts/resolver-dispositions.json";
  *  only in the same PR that adds/removes an entry of that kind. */
 const EXCLUDED_BASELINE = 1;
 const FOUNDER_GATED_BASELINE = 1;
-const NAMED_LIST_BASELINE = 48;
+const NAMED_LIST_BASELINE = 46;
 
 /** Vacuity floors, seeded at 75% of the live counts at the target base
  *  (C 95 · S 95 · R 34 · PS 91), asserted BEFORE any equality check so a
@@ -101,9 +101,7 @@ const SLICE_1B_NAMED_LIST = [
   "run_comps",
   "get_stale_leads",
   "draft_outreach_message",
-  "remember_fact",
   "recall_facts",
-  "spawn_subagent",
   "retrieve_land_knowledge",
   "search_gmail",
   "get_stripe_customer",

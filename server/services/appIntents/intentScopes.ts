@@ -87,7 +87,7 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
   generate_offer_letter: { door: "deals", scope: "deal_write" },
   draft_offer: { door: "deals", scope: "deal_write" },
   get_stale_leads: { door: "deals", scope: "deal_read" },
-  draft_outreach_message: { door: "deals", scope: "comms_write" },
+  draft_outreach_message: { door: "deals", scope: "comms_read" },
   send_email: { door: "deals", scope: "comms_write" },
   send_sms: { door: "deals", scope: "comms_write" },
   search_gmail: { door: "deals", scope: "comms_read" },

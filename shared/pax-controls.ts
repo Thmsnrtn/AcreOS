@@ -567,9 +567,7 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "list_stripe_payments",
       "search_mls_listings",
       "get_mls_comps",
-      "remember_fact",
       "recall_facts",
-      "spawn_subagent",
       // Stage 2 account reads (pause-safe: they only read) and the support
       // hand-off, which files a ticket and never touches the customer's
       // records — the same standing as the support switch's escalate_to_human.
@@ -588,6 +586,12 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
     "executeTool",
   ),
   // Record changes, each in exactly one domain (PX-2 rails).
+  // PF-11 Class-D cure (2026-11-28): remember_fact writes a paxMemory row
+  // and spawn_subagent dispatches a nested agent loop — neither is a look
+  // or a draft, so neither is pause-safe. Both sit on the account rail:
+  // they act on Pax's own memory / agent state, not a customer record
+  // domain.
+  ...recordTools("account", ["remember_fact", "spawn_subagent"], "executeTool"),
   ...recordTools("leads", ["update_lead_status", "create_lead"], "executeTool"),
   ...recordTools("properties", ["create_property", "update_property", "create_properties_batch"], "executeTool"),
   ...recordTools(

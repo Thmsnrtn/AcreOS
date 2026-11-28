@@ -301,10 +301,15 @@ describe("an identified caller is held to the scope the intent declares", () => 
     expect(result.success, `a member was refused create_lead: ${result.error}`).toBe(true);
   });
 
-  it("refuses a bookkeeper a comms_write intent but allows a member", async () => {
+  it("refuses a bookkeeper a comms_read intent but allows a member", async () => {
     // A second role pair, on a different scope, so the two cases above cannot
     // both be passing for a reason peculiar to deal_write.
-    asRole("bookkeeper"); // financial_read/write + deal_read — no comms_write
+    // PF-11 Class-D cure (2026-11-28): draft_outreach_message persists
+    // nothing — it only drafts — so its scope was flipped comms_write →
+    // comms_read (the scope record was the false one; the tool stays a
+    // pause-safe draft). A bookkeeper holds neither comms scope, so the
+    // denial below now names comms_read.
+    asRole("bookkeeper"); // financial_read/write + deal_read — no comms_read
     const denied = await executeTool(
       "draft_outreach_message",
       { lead_id: 1 },
@@ -312,7 +317,7 @@ describe("an identified caller is held to the scope the intent declares", () => 
       { userId: "user_bk" },
     );
     expect(denied.success).toBe(false);
-    expect((denied as { requiredScope?: string }).requiredScope).toBe("comms_write");
+    expect((denied as { requiredScope?: string }).requiredScope).toBe("comms_read");
   });
 
   it("the org OWNER passes without a team_members row", async () => {
