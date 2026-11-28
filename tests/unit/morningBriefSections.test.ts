@@ -125,6 +125,13 @@ describe("composeBriefSections — sections from real counts", () => {
     }
   });
 
+  it("names a parked flip exit record in plain words, singular and plural", () => {
+    const one = composeBriefSections({ ...ZERO, pendingAsksByTool: { record_exit_facts: 1 } });
+    expect(one.prepared.map((i) => i.text)).toEqual(["1 flip exit record prepared, waiting for your tap"]);
+    const two = composeBriefSections({ ...ZERO, pendingAsksByTool: { record_exit_facts: 2 } });
+    expect(two.prepared.map((i) => i.text)).toEqual(["2 flip exit records prepared, waiting for your tap"]);
+  });
+
   it("never uses words for a measurement it does not take", () => {
     const s = composeBriefSections({
       ...ZERO,

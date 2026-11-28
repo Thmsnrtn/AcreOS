@@ -198,6 +198,15 @@ const SEND_ARGS: Record<string, Record<string, unknown>> = {
     endDateTime: "2026-11-01T16:00:00Z",
     attendees: ["seller@example.com"],
   },
+  // Not a send: a write-once rehab exit record the kernel gates like one
+  // (2026-11-24) — the ask must freeze and touch no rail, exactly as a send's.
+  record_exit_facts: {
+    rehab_id: "6f1c1c1e-2b7a-4c1d-9a55-0e0e0e0e0e0f",
+    kind: "exit_decision",
+    exit_kind: "sell",
+    expected_price_cents: 26500000,
+    rationale: "The rehab is done and the market is strong.",
+  },
 };
 
 function setStance(stance: "ask_before_sending" | "ask_before_everything") {

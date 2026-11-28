@@ -137,6 +137,14 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
   get_listing_paste_text: { door: "deals", scope: "deal_read" },
   get_land_payoff_quote: { door: "finance", scope: "financial_read" },
   mark_land_listing_listed: { door: "deals", scope: "deal_write" },
+  // Fix-and-flip rehabs: project/analysis reads are financial_read; the
+  // holding-cost append and the (ask-before) exit/realized record are
+  // financial_write, the REST doors' own class.
+  get_rehab_projects: { door: "finance", scope: "financial_read" },
+  get_rehab_detail: { door: "finance", scope: "financial_read" },
+  get_flip_analysis: { door: "finance", scope: "financial_read" },
+  append_holding_cost_entry: { door: "finance", scope: "financial_write" },
+  record_exit_facts: { door: "finance", scope: "financial_write" },
   calculate_amortization: { door: "finance", scope: "financial_read" },
   get_cashflow_summary: { door: "finance", scope: "financial_read" },
   calculate_roi: { door: "finance", scope: "financial_read" },
