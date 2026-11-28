@@ -124,6 +124,9 @@ const RESOLVER_TOOL_NAMES = [
   "get_wholesale_decision_view",
   "get_wholesale_disposition_packet_view",
   "get_wholesale_blasts_view",
+  "get_lease_abstract_view",
+  "get_lease_rent_steps_view",
+  "get_lease_cam_status_view",
   "query_user_data",
   "get_user_activity",
   "estimate_resolution_confidence",
@@ -204,6 +207,19 @@ Run this loop, then STOP:
    in a state whose assignment-advertising rule blocks it. Never promise to
    send or re-send a blast, prepare a packet the gate refused, or record a
    buyer's reply — these reads change nothing.
+   For a ticket about a lease's
+   commercial terms, rent steps or CAM — or a prior Pax answer about one —
+   ground the reply in get_lease_abstract_view (the lease's recorded
+   commercial terms and per-square-foot figures; a lease with no commercial
+   terms recorded has none — say exactly that), get_lease_rent_steps_view
+   for its escalation steps, and get_lease_cam_status_view for its CAM
+   status (it carries a coverage disclosure: if the latest statement rests
+   on only some of the period's months, repeat that thin coverage whenever
+   its figures are quoted; where no statement was generated, never quote a
+   CAM balance). Tenant names and contact details are NOT available on
+   this path, so never state or guess a tenant's details; if the ticket
+   turns on them, escalate. Never promise to record a sales report or
+   generate a CAM statement — these reads change nothing.
 
 3. Decide ONE outcome and call draft_customer_response EXACTLY ONCE as your final
    tool call:

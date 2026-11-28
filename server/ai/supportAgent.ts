@@ -287,6 +287,18 @@ export const supportToolDefinitions = {
     }
   },
 
+  get_lease_abstract_view: {
+    name: "get_lease_abstract_view",
+    description: "Read one lease's abstract in this account (use the lease id from the customer's own records): the lease, its commercial terms exactly as recorded (rentable area, lease type, CAM share and estimate, base-year stop, percentage-rent terms, contractual late-fee terms), its rent-step count, and per-square-foot figures. A lease with no commercial terms recorded is reported as having none. The result carries a coverage statement: state that coverage when you summarize it. No tenant names or contact details are on it. Read-only: this never records anything or contacts anyone.",
+    parameters: {
+      type: "object",
+      properties: {
+        lease_id: { type: "string", description: "The lease id (a long identifier, not the unit label)" }
+      },
+      required: ["lease_id"]
+    }
+  },
+
   get_rental_underwriting_view: {
     name: "get_rental_underwriting_view",
     description: "Read the latest buy-and-hold underwriting decision recorded for one property in this account, exactly as frozen when it was made. If none is recorded, the result says so — never reconstruct one from the property's numbers. It is not a lender determination. Read-only.",
@@ -296,6 +308,30 @@ export const supportToolDefinitions = {
         property_id: { type: "number", description: "The property's number in this account" }
       },
       required: ["property_id"]
+    }
+  },
+
+  get_lease_rent_steps_view: {
+    name: "get_lease_rent_steps_view",
+    description: "Read the rent-escalation steps recorded for one lease in this account, in the order they take effect (fixed amounts, fixed percentage bumps, CPI steps with index and collar). A lease with no steps bills at its starting rent and the result says so. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        lease_id: { type: "string", description: "The lease id (a long identifier, not the unit label)" }
+      },
+      required: ["lease_id"]
+    }
+  },
+
+  get_lease_cam_status_view: {
+    name: "get_lease_cam_status_view",
+    description: "Read one lease's CAM status in this account: its recorded CAM terms, the expense pools for its property, and every CAM reconciliation statement generated for it. The result carries a coverage disclosure — if the latest statement rests on only some of the period's months, that thin coverage is stated and must be repeated whenever its figures are quoted; if no statement exists, the result says so and no CAM balance may be quoted. Read-only: this never generates a statement or records anything.",
+    parameters: {
+      type: "object",
+      properties: {
+        lease_id: { type: "string", description: "The lease id (a long identifier, not the unit label)" }
+      },
+      required: ["lease_id"]
     }
   },
 
@@ -1521,6 +1557,9 @@ export const PAUSE_SAFE_SUPPORT_TOOLS: ReadonlySet<string> = new Set([
   "get_lease_ledger_view",
   "get_listing_paste_text_view",
   "get_parcel_passport_view",
+  "get_lease_abstract_view",
+  "get_lease_cam_status_view",
+  "get_lease_rent_steps_view",
   "get_payment_history",
   "get_rent_roll_view",
   "get_rental_leases_view",
@@ -2286,6 +2325,31 @@ export async function executeSupportTool(
         // explicit statement that none is recorded. Read-only.
         const { paxGetRentalUnderwritingDecision, buyHoldOutcomeToResult } = await import("./buyHoldTools");
         return buyHoldOutcomeToResult(await paxGetRentalUnderwritingDecision(org.id, { property_id: args.property_id }));
+      }
+      
+      case "get_lease_abstract_view": {
+        // The support path's lease-abstract read — the SAME read the chat
+        // path's get_lease_abstract performs, under a support-only name
+        // because the registries key one dispatch per tool name. Read-only;
+        // coverage-stated by the shared helper; no tenant PII is shaped.
+        const { paxGetLeaseAbstract, commercialLeaseOutcomeToResult } = await import("./commercialLeaseTools");
+        return commercialLeaseOutcomeToResult(await paxGetLeaseAbstract(org.id, args.lease_id));
+      }
+
+      case "get_lease_rent_steps_view": {
+        // The support path's rent-steps read — the SAME shared read as the
+        // chat path's get_lease_rent_steps. Read-only.
+        const { paxGetLeaseRentSteps, commercialLeaseOutcomeToResult } = await import("./commercialLeaseTools");
+        return commercialLeaseOutcomeToResult(await paxGetLeaseRentSteps(org.id, args.lease_id));
+      }
+
+      case "get_lease_cam_status_view": {
+        // The support path's CAM-status read — the SAME shared read as the
+        // chat path's get_lease_cam_status, including its thin-coverage
+        // disclosure. Read-only — recording a sales report stays on the
+        // chat path; nothing here generates a statement either.
+        const { paxGetLeaseCamStatus, commercialLeaseOutcomeToResult } = await import("./commercialLeaseTools");
+        return commercialLeaseOutcomeToResult(await paxGetLeaseCamStatus(org.id, args.lease_id));
       }
 
       case "get_wholesale_buy_box_view": {
