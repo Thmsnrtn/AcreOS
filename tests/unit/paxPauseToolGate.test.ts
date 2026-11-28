@@ -423,12 +423,10 @@ interface BookkeepingExemption {
  * the rows are conversation memory or the support system's own bookkeeping.
  */
 const BOOKKEEPING: Record<string, Record<string, BookkeepingExemption>> = {
-  "server/ai/tools.ts": {
-    remember_fact: {
-      tables: ["paxMemory"],
-      reason: "Conversation-scoped memory, not a record of the customer's business.",
-    },
-  },
+  // "server/ai/tools.ts" has NO bookkeeping exemptions since the PF-11
+  // Class-D cure (2026-11-28): remember_fact — the one exemption, for its
+  // paxMemory insert — was reclassified write-class and removed from
+  // PAUSE_SAFE_TOOLS, so there is nothing left to exempt on this switch.
   "server/ai/supportAgent.ts": {
     escalate_to_human: {
       tables: ["supportTickets", "supportTicketMessages", "paxMemory"],
@@ -490,7 +488,7 @@ describe.each(SWITCHES)("pauseSafeToolsAreSafe: $file", ({ file, allowlist, floo
     if (file === "server/ai/tools.ts") {
       expect(STORAGE_WRITE.test(bodies.get("update_lead_status")!)).toBe(true);
       STORAGE_WRITE.lastIndex = 0;
-      expect(DB_WRITE.test(bodies.get("remember_fact")!)).toBe(true);
+      expect(DB_WRITE.test(bodies.get("draft_offer")!)).toBe(true);
       DB_WRITE.lastIndex = 0;
     }
   });
