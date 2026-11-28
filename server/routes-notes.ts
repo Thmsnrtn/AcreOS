@@ -1392,6 +1392,34 @@ const EDIT_OBSERVED_COLUMNS: Record<string, string> = {
   notes: "notes",
 };
 
+
+// ─── N-D-DEF-1: shape-first guard for acquired-book :id handlers ──────────
+//
+// The handlers below this point in the register function (detail, payments,
+// reconciliation, basis, yield, assignments, loss-mit, splits, amortization,
+// servicing-arrangement) serve the ACQUIRED book only: every lookup or
+// insert keys on `acquiredNotes.id` or a uuid `note_id` column. The
+// serviced book's ids are integers, and an integer — or any malformed id —
+// passed into a uuid column makes Postgres throw invalid-uuid, which the
+// handler's catch turned into a 500 for what is really "no such acquired
+// note" (staging org 149, 2026-11-26: GET /api/notes/75/yield|amortization|
+// payments all 500'd on a serviced note). This is the L9-DEF-1 discipline
+// (see noteBookForId in services/notePaymentMath) applied to the handlers
+// that have no serviced-book branch of their own: the serviced book's own
+// surfaces live in routes-finance.ts, and these acquired concepts (yield,
+// basis, reconciliation, the cents ledger) have no serviced analogue on
+// these paths — so a non-UUID id refuses with the family's existing 404,
+// before any database call, exactly as the payoff family treats an id of
+// neither shape. Org scoping is untouched: a UUID id still goes through
+// the same org-scoped lookup as before and refuses identically.
+/** True when `id` may proceed to an acquired-book lookup; otherwise the
+ *  clean 404 has already been sent and the handler must return. */
+function acquiredNoteIdOr404(res: Response, id: string): boolean {
+  if (isUuidShape(id)) return true;
+  Errors.notFound(res, "Note");
+  return false;
+}
+
 export function registerNoteRoutes(app: Express): void {
   const ownerOrAdmin = requireRole(["owner", "admin"]);
 
@@ -1648,6 +1676,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const id = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, id)) return;
         const [row] = await db
           .select()
           .from(acquiredNotes)
@@ -1688,6 +1717,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const id = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, id)) return;
         const parsed = patchNoteSchema.safeParse(req.body);
         if (!parsed.success) {
           return Errors.validationFailed(res, parsed.error.flatten());
@@ -1805,6 +1835,7 @@ export function registerNoteRoutes(app: Express): void {
         const orgId = getOrganizationId(req);
         const actor = getUserId(req);
         const id = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, id)) return;
         const parsed = servicingArrangementBody.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
         const next = parsed.data.servicingArrangement;
@@ -1855,6 +1886,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const id = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, id)) return;
         // Confirm the note belongs to this org first.
         const [note] = await db
           .select({ id: acquiredNotes.id })
@@ -1906,6 +1938,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const id = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, id)) return;
         const parsed = recordPaymentSchema.safeParse(req.body);
         if (!parsed.success) {
           return Errors.validationFailed(res, parsed.error.flatten());
@@ -2414,6 +2447,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const id = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, id)) return;
 
         // Note row — opening principal, live current balance.
         const [note] = await db
@@ -2496,6 +2530,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const id = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, id)) return;
         const method = (req.query.method === "constant_yield" ? "constant_yield" : "ratable") as
           | "ratable"
           | "constant_yield";
@@ -2555,6 +2590,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const id = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, id)) return;
 
         const [note] = await db
           .select()
@@ -2610,6 +2646,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const noteId = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, noteId)) return;
         const parsed = z.object({
           assigneeName: z.string().min(1).max(240),
           assigneeAddress: z.object({
@@ -2701,6 +2738,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const noteId = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, noteId)) return;
         const rows = await db
           .select()
           .from(noteAssignments)
@@ -2769,6 +2807,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const noteId = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, noteId)) return;
         const [row] = await db
           .select()
           .from(noteLossMitCases)
@@ -2795,6 +2834,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const noteId = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, noteId)) return;
         const parsed = z.object({
           state: z.string().length(2).optional(),
           daysPastDueAtOpen: z.number().int().nonnegative().optional(),
@@ -3005,6 +3045,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const noteId = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, noteId)) return;
         const rows = await db
           .select()
           .from(noteOwnershipSplits)
@@ -3028,6 +3069,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const noteId = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, noteId)) return;
         const parsed = z.object({
           investorLeadId: z.number().int().positive().optional(),
           investorName: z.string().min(1).max(240),
@@ -3489,6 +3531,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const id = routeParam(req.params.id);
+        if (!acquiredNoteIdOr404(res, id)) return;
         const [note] = await db
           .select()
           .from(acquiredNotes)
