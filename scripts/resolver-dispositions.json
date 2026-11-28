@@ -56,6 +56,25 @@
       "variant": "get_lease_ledger_view"
     },
     {
+      "tool": "get_lease_abstract",
+      "disposition": "variant",
+      "variant": "get_lease_abstract_view"
+    },
+    {
+      "tool": "get_lease_rent_steps",
+      "disposition": "variant",
+      "variant": "get_lease_rent_steps_view"
+    },
+    {
+      "tool": "get_lease_cam_status",
+      "disposition": "variant",
+      "variant": "get_lease_cam_status_view"
+    },
+    {
+      "tool": "record_tenant_sales_report",
+      "disposition": "write-pinned-absent"
+    },
+    {
       "tool": "get_rental_underwriting_decision",
       "disposition": "variant",
       "variant": "get_rental_underwriting_view"
@@ -226,6 +245,14 @@
     },
     {
       "tool": "trigger_make",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "append_holding_cost_entry",
+      "disposition": "write-pinned-absent"
+    },
+    {
+      "tool": "record_exit_facts",
       "disposition": "write-pinned-absent"
     }
   ],
